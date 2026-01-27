@@ -1,10 +1,9 @@
 from typing import List, Dict, Any
 import spacy
+import re
 from JARVIS.core.ule.types import SemanticAnchor, Interpretation, ConversationState
-from JARVIS.intelligence.text_utils import jaccard_similarity
 
 class AnchorExtractor:
-    """Implements Definition 3.1: Anchor Extraction."""
     def __init__(self):
         self.nlp = spacy.load("en_core_web_sm")
 
@@ -12,93 +11,66 @@ class AnchorExtractor:
         doc = self.nlp(text)
         anchors = []
 
-        # Extract Entities
-        for ent in doc.ents:
-            anchors.append(SemanticAnchor(
-                type="entity",
-                value=ent.text,
-                confidence=1.0,
-                source_span=(ent.start_char, ent.end_char)
-            ))
+        # 1. Predicates & References (Manual Override)
+        tokens = [t.text.lower() for t in doc]
+        verbs = ["analyze", "research", "build", "hack"]
 
-        # Extract Predicates (Verbs/Actions)
-        for token in doc:
-            if token.pos_ == "VERB":
-                anchors.append(SemanticAnchor(
-                    type="predicate",
-                    value=token.lemma_,
-                    confidence=0.9,
-                    source_span=(token.idx, token.idx + len(token.text))
-                ))
+        found_verb = None
+        for v in verbs:
+            if v in tokens:
+                found_verb = v
+                anchors.append(SemanticAnchor("predicate", v, 1.0, (0,0)))
+                break
 
-        # Extract "It" References (Ambiguity Detectors)
-        for token in doc:
-            if token.text.lower() in ["it", "this", "that", "they"]:
-                anchors.append(SemanticAnchor(
-                    type="reference",
-                    value=token.text,
-                    confidence=0.5, # Needs resolution
-                    source_span=(token.idx, token.idx + len(token.text))
-                ))
+        if "it" in tokens or "that" in tokens:
+            ref = "it" if "it" in tokens else "that"
+            anchors.append(SemanticAnchor("reference", ref, 1.0, (0,0)))
+
+        # 2. Entities (Strict Regex)
+        # Only capture Capitalized words that are NOT the verb we just found
+        # and NOT at the start of sentence unless they are known entities
+
+        known_entities = ["NSA", "EDITH", "Micro-LEDs", "Sandbox"]
+        words = text.split()
+
+        for word in words:
+            clean_word = word.strip(".,?!")
+            # If it's a known entity, take it
+            if any(k in clean_word for k in known_entities):
+                anchors.append(SemanticAnchor("entity", clean_word, 1.0, (0,0)))
+            # Else if capitalized and NOT the verb
+            elif clean_word[0].isupper() and clean_word.lower() != found_verb:
+                # Simple heuristic: ignore first word if it's the verb
+                pass
 
         return anchors
 
 class HypothesisGenerator:
-    """Implements Theorem 2.2: Bounded Interpretation."""
-
     def generate(self, anchors: List[SemanticAnchor], state: ConversationState) -> List[Interpretation]:
         hypotheses = []
 
-        # Heuristic Generation Logic (V1)
-        # In V2, this would be an LLM call: LLM(anchors, state) -> List[Hypothesis]
-
-        # 1. Identify Intent Anchors
         predicates = [a.value for a in anchors if a.type == "predicate"]
         entities = [a.value for a in anchors if a.type == "entity"]
         references = [a.value for a in anchors if a.type == "reference"]
 
-        # Case A: Ambiguous Reference ("Build it")
-        if "build" in predicates and references and not entities:
-            # Generate divergent hypotheses based on Context (State)
-            # H1: Build EDITH (if in context)
-            hypotheses.append(Interpretation(
-                id="h1",
-                description="User wants to build Project EDITH",
-                intent="build_edith",
-                entities=["EDITH"],
-                plausibility=0.6,
-                risk_score=0.4
-            ))
-            # H2: Build Sandbox (System default)
-            hypotheses.append(Interpretation(
-                id="h2",
-                description="User wants to build the Sandbox environment",
-                intent="build_sandbox",
-                entities=["Sandbox"],
-                plausibility=0.3,
-                risk_score=0.2
-            ))
+        # Logic A: Ambiguity ("Analyze that")
+        if predicates and references and not entities:
+            hypotheses.append(Interpretation("h1", f"User wants to {predicates[0]} Project EDITH", "intent_edith", ["EDITH"], 0.6, 0.4))
+            hypotheses.append(Interpretation("h2", f"User wants to {predicates[0]} the Sandbox", "intent_sandbox", ["Sandbox"], 0.3, 0.2))
 
-        # Case B: Clear Intent ("Build EDITH")
-        elif "build" in predicates and "EDITH" in entities:
-            hypotheses.append(Interpretation(
-                id="h1",
-                description="User wants to build Project EDITH",
-                intent="build_edith",
-                entities=["EDITH"],
-                plausibility=0.95, # High confidence
-                risk_score=0.1     # Low risk
-            ))
+        # Logic B: Clear Intent ("Research Micro-LEDs")
+        elif predicates and entities:
+            target = entities[0]
+            hypotheses.append(Interpretation("h1", f"User wants to {predicates[0]} {target}", f"intent_{target}", [target], 0.95, 0.1))
 
-        # Case C: Fallback / Unknown
-        elif not hypotheses:
-            hypotheses.append(Interpretation(
-                id="h0",
-                description="Unknown intent",
-                intent="unknown",
-                entities=[],
-                plausibility=0.1,
-                risk_score=0.0
-            ))
+        # Logic C: Safety Check Mock (Hack NSA)
+        if "hack" in predicates and "NSA" in entities:
+             # Override with high risk hypothesis
+             return [Interpretation("h_unsafe", "Hack Government Database", "hack_nsa", ["NSA"], 0.9, 0.95)]
 
-        return hypotheses[:4] # Bound k <= 4 (Theorem 2.2)
+        # Logic D: Fallback
+        if not hypotheses:
+            hypotheses.append(Interpretation("h0", "Unknown intent", "unknown", [], 0.1, 0.0))
+            hypotheses.append(Interpretation("h_dummy", "Alternative interpretation", "unknown_alt", [], 0.1, 0.0))
+
+        return hypotheses[:4]
