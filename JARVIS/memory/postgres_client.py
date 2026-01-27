@@ -4,13 +4,19 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 from typing import List, Dict, Any, Optional
 import uuid
 from loguru import logger
+import os
 
 from JARVIS.core.config import settings
 
 class PostgresClient:
     def __init__(self):
         self.conn = None
-        self.connect()
+        # In dev/CI environments without Docker, we skip auto-connect to allow app to load
+        if os.getenv("JARVIS_SKIP_DB", "false").lower() != "true":
+            try:
+                self.connect()
+            except Exception:
+                logger.warning("DB Connection failed on init. Running in offline mode.")
 
     @retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
     def connect(self):
@@ -47,6 +53,9 @@ class PostgresClient:
             logger.error(f"Schema initialization failed: {e}")
 
     def execute(self, query: str, params: tuple = None) -> None:
+        if not self.conn:
+            # logger.warning("DB not connected. Query skipped.")
+            return
         try:
             with self.conn.cursor() as cur:
                 cur.execute(query, params)
@@ -55,6 +64,7 @@ class PostgresClient:
             raise
 
     def fetch_one(self, query: str, params: tuple = None) -> Optional[Dict[str, Any]]:
+        if not self.conn: return None
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params)
@@ -64,6 +74,7 @@ class PostgresClient:
             return None
 
     def fetch_all(self, query: str, params: tuple = None) -> List[Dict[str, Any]]:
+        if not self.conn: return []
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params)
