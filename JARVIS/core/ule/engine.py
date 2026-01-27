@@ -5,6 +5,7 @@ from JARVIS.core.ule.types import ConversationState, MoveType
 from JARVIS.core.ule.cognitive import AnchorExtractor, HypothesisGenerator
 from JARVIS.core.ule.control import MoveSelector
 from JARVIS.core.ule.dynamics import state_dynamics
+from JARVIS.core.ule.realizer import realizer
 
 class ULEEngine:
     """The Main ULE Loop: f(S, U) -> R"""
@@ -29,33 +30,21 @@ class ULEEngine:
         action_payload = {}
 
         if ule_output.move == MoveType.CLARIFY:
-            # Update state to reflect ambiguity gap
             self.state.unresolved_gaps.append("ambiguity_resolution")
-            # Response is the clarification question
-            final_response = ule_output.response_content
 
         elif ule_output.move == MoveType.PROPOSE:
-            # We have a solid intent -> Execute
             selected = ule_output.selected_interpretation
             self.state.topic = selected.intent
-
-            # Map interpretation to Action Payload for MissionControl
             action_payload = {
                 "intent": selected.intent,
                 "goal": selected.description
             }
-
-            final_response = f"Affirmative. {ule_output.response_content}"
-            # Trust grows slightly on successful proposal
             state_dynamics.update_trust(self.state, 1.0)
 
-        elif ule_output.move == MoveType.REFUSE:
-            final_response = f"Safety Lock: {ule_output.response_content}"
+        # 4. REALIZATION (NLG) - The Voice
+        natural_response = realizer.realize(ule_output)
 
-        else:
-            final_response = "Processing..."
-
-        return final_response, {
+        return natural_response, {
             "move": ule_output.move.name,
             "rationale": ule_output.rationale,
             "state": self.state.to_dict(),

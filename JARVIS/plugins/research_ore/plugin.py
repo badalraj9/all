@@ -20,7 +20,6 @@ class ResearchPlugin(BasePlugin):
         query = event.data.get("query")
         logger.info(f"ORE: Fetching real ArXiv papers for '{query}'...")
 
-        # 1. Fetch from ArXiv
         papers = await self._fetch_arxiv(query)
 
         if not papers:
@@ -28,9 +27,13 @@ class ResearchPlugin(BasePlugin):
             await event_bus.emit("task.fail", {"reason": "No papers found"}, source="research_ore")
             return
 
-        # 2. Analyze the first paper
         top_paper = papers[0]
         analysis = self._analyze_text(top_paper['summary'])
+
+        # --- PATTERN LEARNING (Linguistic Observer) ---
+        patterns = self._extract_patterns(top_paper['summary'])
+        # In a full system, we would batch save these to MemoryThread
+        logger.info(f"ORE: Extracted {len(patterns)} linguistic patterns from text.")
 
         findings = {
             "title": top_paper['title'],
@@ -40,16 +43,12 @@ class ResearchPlugin(BasePlugin):
             "key_phrases": analysis['noun_chunks']
         }
 
-        logger.info(f"ORE: Analysis complete. Found: {findings['title']}")
-
-        # 3. Emit Result
         await event_bus.emit(
             "research.complete",
             {"query": query, "findings": findings},
             source="research_ore"
         )
 
-        # 4. Ingest into Memory
         await event_bus.emit(
             "memory.ingest",
             {
@@ -57,38 +56,54 @@ class ResearchPlugin(BasePlugin):
                 "action": "OBSERVE",
                 "object_id": str(hash(findings['title'])),
                 "payload": findings,
-                "truth_vector": {
-                    "confidence": 0.9,
-                    "authority": 0.8, # ArXiv is authoritative
-                    "freshness": 1.0
-                }
+                "truth_vector": {"confidence": 0.9, "authority": 0.8, "freshness": 1.0}
             },
             source="research_ore",
             priority=EventPriority.HIGH
         )
 
     async def _fetch_arxiv(self, query: str, max_results=3) -> List[Dict]:
-        """Fetch papers from ArXiv API."""
         encoded_query = quote_plus(query)
         url = f"http://export.arxiv.org/api/query?search_query=all:{encoded_query}&start=0&max_results={max_results}"
-
-        # Run synchronous feedparser in thread
-        feed = await asyncio.to_thread(feedparser.parse, url)
-
-        results = []
-        for entry in feed.entries:
-            results.append({
-                "title": entry.title,
-                "summary": entry.summary,
-                "link": entry.link,
-                "published": entry.published
-            })
-        return results
+        try:
+            feed = await asyncio.to_thread(feedparser.parse, url)
+            results = []
+            for entry in feed.entries:
+                results.append({
+                    "title": entry.title,
+                    "summary": entry.summary,
+                    "link": entry.link,
+                    "published": entry.published
+                })
+            return results
+        except Exception as e:
+            logger.error(f"ArXiv fetch failed: {e}")
+            return []
 
     def _analyze_text(self, text: str) -> Dict[str, Any]:
-        """Extract entities and noun chunks using Spacy."""
         doc = self.nlp(text)
         return {
             "entities": [ent.text for ent in doc.ents],
             "noun_chunks": [chunk.text for chunk in doc.noun_chunks]
         }
+
+    def _extract_patterns(self, text: str) -> List[str]:
+        """
+        Extracts syntactic skeletons by masking entities.
+        Input: "The battery efficiency is critical."
+        Output: "The [ENTITY] is critical."
+        """
+        doc = self.nlp(text)
+        patterns = []
+        for sent in doc.sents:
+            # Simple masking strategy
+            masked_words = []
+            for token in sent:
+                if token.ent_type_:
+                    masked_words.append(f"[{token.ent_type_}]")
+                elif token.pos_ in ["NOUN", "PROPN"]:
+                    masked_words.append("[NOUN]")
+                else:
+                    masked_words.append(token.text)
+            patterns.append(" ".join(masked_words))
+        return patterns[:5] # Return top 5 for demo
