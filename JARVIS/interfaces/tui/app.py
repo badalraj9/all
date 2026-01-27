@@ -11,8 +11,7 @@ import sys
 from JARVIS.core.event_bus import event_bus, Event, EventPriority
 from JARVIS.core.mission_control import mission_control
 from JARVIS.core.plugin_loader import plugin_loader
-from JARVIS.memory.bridge import memory_bridge
-from JARVIS.interfaces.watchdog import watch_dog
+from JARVIS.core.ule.engine import ule_engine
 
 class LogHandler:
     def __init__(self, widget: RichLog):
@@ -25,11 +24,12 @@ class LogHandler:
         pass
 
 class BrainMonitor(Static):
-    """Displays Neural Hub status."""
+    """Displays ULE State."""
     def compose(self) -> ComposeResult:
-        yield Label("🧠 NEURAL HUB: ONLINE", id="brain-status")
-        yield Label("Confidence: ---", id="brain-confidence")
-        yield Label("Current Focus: Idle", id="brain-focus")
+        yield Label("🧠 ULE BRAIN: ONLINE", id="brain-status")
+        yield Label("Trust: 0.50", id="brain-trust")
+        yield Label("Ambiguity: ---", id="brain-ambiguity")
+        yield Label("Move: IDLE", id="brain-move")
 
 class MissionMonitor(Static):
     """Displays active mission status."""
@@ -100,7 +100,7 @@ class JarvisApp(App):
         logger.remove()
         logger.add(lambda msg: log_widget.write(msg), format="{time:HH:mm:ss} | {level} | {message}")
 
-        logger.info("[bold green]JARVIS SYSTEM INITIALIZING...[/]")
+        logger.info("[bold green]JARVIS SYSTEM INITIALIZING (ULE KERNEL)...[/]")
 
         # Start Systems
         await self.start_jarvis()
@@ -114,17 +114,9 @@ class JarvisApp(App):
         # Subscribe to updates
         event_bus.subscribe("task.*", self.update_ui)
         event_bus.subscribe("research.complete", self.show_research)
-        event_bus.subscribe("watch.clipboard", self.handle_watch_event)
 
-        # Trigger Startup (Resume Mission)
+        # Trigger Startup
         await event_bus.emit("system.startup", {}, source="tui")
-
-        # Start WatchDog
-        self.run_watchdog()
-
-    @work
-    async def run_watchdog(self):
-        await watch_dog.start()
 
     async def update_ui(self, event: Event):
         # Update Pending Tasks Count
@@ -135,13 +127,6 @@ class JarvisApp(App):
         data = event.data.get("findings", {})
         title = data.get("title", "Unknown")
         logger.info(f"[bold cyan]RESEARCH RESULT:[/bold cyan] {title}")
-        logger.info(f"Summary: {data.get('summary')}")
-
-    async def handle_watch_event(self, event: Event):
-        content = event.data.get("content", "")
-        logger.info(f"[bold magenta]WATCHDOG ALERT:[/bold magenta] Trigger found in clipboard.")
-        logger.info(f"Content: {content[:50]}...")
-        # In real system, this would trigger analysis
 
     async def on_input_submitted(self, message: Input.Submitted):
         cmd = message.value
@@ -149,10 +134,23 @@ class JarvisApp(App):
 
         logger.info(f"[bold yellow]USER:[/bold yellow] {cmd}")
 
-        if cmd.lower().startswith("build"):
-            goal = cmd[6:]
-            logger.info(f"Initiating Mission: {goal}")
-            await event_bus.emit("mission.create", {"goal": goal}, source="tui")
+        # --- THE ULE BRAIN TRANSPLANT ---
+        # Instead of parsing "Build X" manually, we send it to ULE
+
+        response, meta = ule_engine.process_turn(cmd)
+
+        # Update Brain Monitor
+        self.query_one("#brain-trust", Label).update(f"Trust: {meta['state']['trust']:.2f}")
+        self.query_one("#brain-move", Label).update(f"Move: {meta['move']}")
+        self.query_one("#brain-ambiguity", Label).update(f"Rationale: {meta['rationale']}")
+
+        logger.info(f"[bold blue]JARVIS:[/bold blue] {response}")
+
+        # If Move was PROPOSE, trigger Mission Control
+        if meta.get("action_payload") and meta["move"] == "PROPOSE":
+            goal = meta["action_payload"]["goal"]
+            logger.info(f"Initiating Mission from ULE: {goal}")
+            await event_bus.emit("mission.create", {"goal": goal}, source="ule")
 
 if __name__ == "__main__":
     app = JarvisApp()
