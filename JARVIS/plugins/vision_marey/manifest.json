@@ -1,0 +1,8 @@
+{
+    "plugin_id": "vision_marey",
+    "name": "MAREY Vision System",
+    "version": "1.0.0",
+    "description": "Adaptive media processing and computer vision",
+    "entry_point": "plugin.VisionPlugin",
+    "capabilities": ["vision", "ocr", "diagram_analysis"]
+}

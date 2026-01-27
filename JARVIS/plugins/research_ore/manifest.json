@@ -1,0 +1,8 @@
+{
+    "plugin_id": "research_ore",
+    "name": "ORE Research Engine",
+    "version": "1.0.0",
+    "description": "Autonomous research using ArXiv and Web",
+    "entry_point": "plugin.ResearchPlugin",
+    "capabilities": ["research", "summarize"]
+}

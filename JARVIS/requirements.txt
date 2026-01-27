@@ -1,0 +1,38 @@
+# Core
+pydantic
+pydantic-settings
+python-dotenv
+asyncio
+tenacity
+loguru
+
+# Data & Memory
+psycopg2-binary
+asyncpg
+qdrant-client
+numpy
+networkx
+
+# Web & API (Internal Bus / Plugins)
+fastapi
+uvicorn
+httpx
+requests
+websockets
+
+# Intelligence & NLP
+spacy
+nltk
+transformers
+torch  # Maybe optional depending on size, but ORE uses it. keeping it for now.
+
+# Utilities
+msgpack
+psutil
+cachetools
+python-json-logger
+pymupdf
+
+# Interface (TUI)
+rich
+textual
