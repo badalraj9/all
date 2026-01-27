@@ -12,6 +12,7 @@ from JARVIS.core.event_bus import event_bus, Event, EventPriority
 from JARVIS.core.mission_control import mission_control
 from JARVIS.core.plugin_loader import plugin_loader
 from JARVIS.memory.bridge import memory_bridge
+from JARVIS.interfaces.watchdog import watch_dog
 
 class LogHandler:
     def __init__(self, widget: RichLog):
@@ -113,6 +114,17 @@ class JarvisApp(App):
         # Subscribe to updates
         event_bus.subscribe("task.*", self.update_ui)
         event_bus.subscribe("research.complete", self.show_research)
+        event_bus.subscribe("watch.clipboard", self.handle_watch_event)
+
+        # Trigger Startup (Resume Mission)
+        await event_bus.emit("system.startup", {}, source="tui")
+
+        # Start WatchDog
+        self.run_watchdog()
+
+    @work
+    async def run_watchdog(self):
+        await watch_dog.start()
 
     async def update_ui(self, event: Event):
         # Update Pending Tasks Count
@@ -125,6 +137,12 @@ class JarvisApp(App):
         logger.info(f"[bold cyan]RESEARCH RESULT:[/bold cyan] {title}")
         logger.info(f"Summary: {data.get('summary')}")
 
+    async def handle_watch_event(self, event: Event):
+        content = event.data.get("content", "")
+        logger.info(f"[bold magenta]WATCHDOG ALERT:[/bold magenta] Trigger found in clipboard.")
+        logger.info(f"Content: {content[:50]}...")
+        # In real system, this would trigger analysis
+
     async def on_input_submitted(self, message: Input.Submitted):
         cmd = message.value
         message.input.value = ""
@@ -134,13 +152,7 @@ class JarvisApp(App):
         if cmd.lower().startswith("build"):
             goal = cmd[6:]
             logger.info(f"Initiating Mission: {goal}")
-
-            # Manually triggering a flow for Demo purposes
-            # In real system, LLM would parse this
-            t1 = mission_control.add_task(f"Research {goal}", "research.start", {"query": goal})
-            t2 = mission_control.add_task(f"Design {goal}", "design.draft", {}, depends_on=[t1])
-
-            await mission_control.run_cycle()
+            await event_bus.emit("mission.create", {"goal": goal}, source="tui")
 
 if __name__ == "__main__":
     app = JarvisApp()
