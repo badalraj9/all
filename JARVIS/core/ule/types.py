@@ -1,71 +1,108 @@
-from enum import Enum, auto
-from dataclasses import dataclass, field
-from typing import List, Dict, Set, Optional, Any
-import math
+from typing import List, Dict, Set, Optional, Literal, Union, Any
+from pydantic import BaseModel, Field
+from enum import Enum
+from datetime import datetime
 
-class MoveType(Enum):
-    ACK = auto()
-    CLARIFY = auto()
-    ANSWER = auto()
-    EXPLAIN = auto()
-    PROPOSE = auto()
-    REFUSE = auto()
-    SUMMARIZE = auto()
-    META = auto()
+# =============================================================================
+# PART I: FOUNDATIONAL DEFINITIONS
+# =============================================================================
 
-@dataclass
-class SemanticAnchor:
+# -- T: Topic Manifold --
+class Topic(BaseModel):
+    name: str
+    embedding: List[float] = Field(default_factory=list)
+    confidence: float = 1.0
+
+# -- E: Entity Grounding --
+class Entity(BaseModel):
+    id: str
+    name: str
     type: str
-    value: str
-    confidence: float
-    source_span: tuple
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    grounded_at: datetime = Field(default_factory=datetime.now)
 
-@dataclass
-class Interpretation:
+# -- G: Goal Distribution --
+class Goal(BaseModel):
     id: str
     description: str
-    intent: str
-    entities: List[str]
-    plausibility: float
-    risk_score: float
+    priority: float  # [0, 1]
+    status: Literal['active', 'completed', 'failed', 'dormant'] = 'active'
 
-@dataclass
-class ConversationState:
-    """Definition 1.1: State Vector S_t with Goal Stack."""
-    topic: str = "general"
-    entities: Dict[str, Any] = field(default_factory=dict)
+# -- P: Posture --
+class Posture(str, Enum):
+    NEUTRAL = "neutral"
+    ASSERTIVE = "assertive"
+    INQUISITIVE = "inquisitive"
+    APOLOGETIC = "apologetic"
+    ENTHUSIASTIC = "enthusiastic"
 
-    # G: Goal Distribution -> Now a Stack for context retention
-    goal_stack: List[str] = field(default_factory=list)
-    active_goal: Optional[str] = None
+# -- Δ: Unresolved Gaps --
+class Gap(BaseModel):
+    id: str
+    description: str
+    type: Literal['ambiguity', 'missing_info', 'conflict']
+    severity: float  # [0, 1]
 
-    posture: str = "neutral"
-    trust: float = 0.5
-    explicitness: float = 0.5
-    unresolved_gaps: List[str] = field(default_factory=list)
+# -- S: Conversation State --
+class ConversationState(BaseModel):
+    # Core Components S = (T, E, G, P, τ, ε, Δ)
+    topic: Topic
+    entities: List[Entity] = Field(default_factory=list)
+    goals: List[Goal] = Field(default_factory=list)
+    posture: Posture = Posture.NEUTRAL
+    trust: float = 0.5  # τ: Trust scalar [0, 1]
+    explicitness: float = 0.5  # ε: Explicitness scalar [0, 1]
+    gaps: List[Gap] = Field(default_factory=list)  # Δ
 
-    def push_goal(self, goal: str):
-        if self.active_goal:
-            self.goal_stack.append(self.active_goal)
-        self.active_goal = goal
+    # Metadata
+    turn_count: int = 0
+    last_updated: datetime = Field(default_factory=datetime.now)
 
-    def pop_goal(self):
-        if self.goal_stack:
-            self.active_goal = self.goal_stack.pop()
-        else:
-            self.active_goal = None
+# =============================================================================
+# PART II: INTERPRETATION SPACE
+# =============================================================================
 
-    def to_dict(self):
-        return {
-            "topic": self.topic,
-            "active_goal": self.active_goal,
-            "stack_depth": len(self.goal_stack),
-            "trust": self.trust
-        }
+class Hypothesis(BaseModel):
+    id: str
+    content: str  # The interpretation
+    confidence: float  # p(h)
+    reasoning: str
+    required_entities: List[str] = Field(default_factory=list)
+    implied_goal: Optional[str] = None
+    risk_assessment: Optional['Risk'] = None
 
-@dataclass
-class ULEOutput:
-    move: MoveType
+# =============================================================================
+# PART III: MOVE ALGEBRA
+# =============================================================================
+
+class MoveType(str, Enum):
+    ACK = "ACK"
+    CLARIFY = "CLARIFY"
+    ANSWER = "ANSWER"
+    EXPLAIN = "EXPLAIN"
+    PROPOSE = "PROPOSE"
+    REFUSE = "REFUSE"
+    SUMMARIZE = "SUMMARIZE"
+    META = "META"
+
+class Move(BaseModel):
+    type: MoveType
+    content: str
     rationale: str
-    selected_interpretation: Optional[Interpretation]
-    response_content: str
+    target_hypothesis_id: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+# =============================================================================
+# PART IV: RISK & COST
+# =============================================================================
+
+class Risk(BaseModel):
+    score: float  # [0, 1]
+    factors: List[str] = Field(default_factory=list)
+    is_safe: bool
+
+class Anchors(BaseModel):
+    entities: List[str]
+    intent_keywords: List[str]
+    temporal_markers: List[str]
+    raw_text: str

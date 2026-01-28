@@ -1,74 +1,75 @@
-from typing import Dict, Any, Tuple
+from typing import Dict, Tuple, Any
+from JARVIS.core.ule.types import ConversationState, Topic, Move, Anchors
+from JARVIS.core.ule.cognitive import cognitive_plane
+from JARVIS.core.ule.control import controller
+from JARVIS.core.ule.dynamics import dynamics
+from JARVIS.intelligence.llm_engine import llm_engine
 from loguru import logger
-
-from JARVIS.core.ule.types import ConversationState, MoveType
-from JARVIS.core.ule.cognitive import AnchorExtractor, HypothesisGenerator
-from JARVIS.core.ule.control import MoveSelector
-from JARVIS.core.ule.dynamics import state_dynamics
-from JARVIS.core.ule.realizer import realizer
+import asyncio
 
 class ULEEngine:
     def __init__(self):
-        self.state = ConversationState()
-        self.anchor_extractor = AnchorExtractor()
-        self.hypothesis_generator = HypothesisGenerator()
-        self.move_selector = MoveSelector()
+        self.states: Dict[str, ConversationState] = {}
 
-    def process_turn(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
-        logger.info(f"ULE: Processing turn '{user_input}'")
+    async def initialize(self):
+        # Initialize LLM
+        await llm_engine.initialize()
 
-        # 1. Cognitive Plane
-        anchors = self.anchor_extractor.extract(user_input)
+    def get_or_create_state(self, user_id: str) -> ConversationState:
+        if user_id not in self.states:
+            self.states[user_id] = ConversationState(
+                topic=Topic(name="General"),
+                trust=0.5,
+                explicitness=0.5
+            )
+        return self.states[user_id]
 
-        # SPECIAL LOGIC: "Continue" / "Resume"
-        # If input is just "continue", we bypass standard hypothesis generation
-        # and look at the State Stack.
-        if "continue" in user_input.lower() or "resume" in user_input.lower():
-            if self.state.active_goal:
-                # Resume current goal
-                final_response = f"Resuming: {self.state.active_goal}"
-                return final_response, {"move": "RESUME", "rationale": "Resuming active goal", "state": self.state.to_dict()}
-            elif self.state.goal_stack:
-                # Pop from stack
-                self.state.active_goal = self.state.goal_stack.pop()
-                final_response = f"Resuming previous task: {self.state.active_goal}"
-                return final_response, {"move": "RESUME", "rationale": "Popped goal from stack", "state": self.state.to_dict()}
-            else:
-                return "I have no active tasks to resume.", {"move": "IDLE", "rationale": "Stack empty", "state": self.state.to_dict()}
+    async def process_turn(self, user_id: str, user_text: str) -> Tuple[str, Dict[str, Any]]:
+        # 1. Get State (S_t)
+        state = self.get_or_create_state(user_id)
+        logger.info(f"ULE: Processing turn {state.turn_count} for user {user_id}. Trust={state.trust:.2f}")
 
-        hypotheses = self.hypothesis_generator.generate(anchors, self.state)
+        # 2. Cognitive Plane (V): Input -> Hypotheses
+        anchors = await cognitive_plane.extract_anchors(user_text)
+        hypotheses = await cognitive_plane.generate_hypotheses(user_text, state, anchors)
+        logger.debug(f"ULE: Generated {len(hypotheses)} hypotheses.")
 
-        # 2. Control Plane
-        ule_output = self.move_selector.select_move(hypotheses, self.state)
+        # 3. Conversation Plane (C): State + Hypotheses -> Move
+        move = controller.select_move(state, hypotheses)
+        logger.info(f"ULE: Selected Move: {move.type} | Rationale: {move.rationale}")
 
-        # 3. State Update (Goal Tracking)
-        action_payload = {}
+        # 4. Realization (M -> Response Text)
+        response_text = await self._realize_move(move, state)
 
-        if ule_output.move == MoveType.PROPOSE:
-            selected = ule_output.selected_interpretation
-            # Update Goal State
-            # Logic: If new goal is different from active, push active to stack
-            if self.state.active_goal and self.state.active_goal != selected.description:
-                self.state.push_goal(selected.description)
-            else:
-                self.state.active_goal = selected.description
+        # 5. Dynamics (f): S_{t+1} = f(S_t, U_t, R_t)
+        new_state = dynamics.update(state, user_text, move)
+        self.states[user_id] = new_state
 
-            self.state.topic = selected.intent
-            action_payload = {"intent": selected.intent, "goal": selected.description}
-            state_dynamics.update_trust(self.state, 1.0)
-
-        elif ule_output.move == MoveType.ANSWER:
-            # Chit-chat does NOT change active goal
-            pass
-
-        # 4. Realization
-        natural_response = realizer.realize(ule_output)
-
-        return natural_response, {
-            "move": ule_output.move.name,
-            "rationale": ule_output.rationale,
-            "state": self.state.to_dict(),
-            "action_payload": action_payload
+        # 6. Metadata for UI/Systems
+        meta = {
+            "state": {
+                "trust": new_state.trust,
+                "explicitness": new_state.explicitness,
+                "ambiguity": controller._calculate_entropy(hypotheses) # Recalculating for display or pass it
+            },
+            "move": move.type,
+            "rationale": move.rationale,
+            # If the move was PROPOSE, we assume the content or metadata has the goal.
+            # For now, we'll extract it heuristically or from hypothesis.
+            "action_payload": move.metadata.get("action_payload")
         }
+
+        return response_text, meta
+
+    async def _realize_move(self, move: Move, state: ConversationState) -> str:
+        prompt = f"""
+        Generate a response for the user.
+        Move Type: {move.type}
+        Content Intent: {move.content}
+        Target Explicitness: {state.explicitness} (0=concise, 1=very detailed)
+        Posture: {state.posture.value}
+        """
+        response = await llm_engine.generate(prompt, max_tokens=200)
+        return response
 
 ule_engine = ULEEngine()

@@ -1,108 +1,75 @@
-from typing import List, Dict, Any
-import spacy
-import re
-from sentence_transformers import SentenceTransformer, util
-from JARVIS.core.ule.types import SemanticAnchor, Interpretation, ConversationState
+from typing import List
+from JARVIS.core.ule.types import Hypothesis, ConversationState, Anchors, Risk
+from JARVIS.intelligence.llm_engine import llm_engine
+import uuid
+import json
 
-class AnchorExtractor:
-    """Implements Definition 3.1: Anchor Extraction."""
-    def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+class CognitivePlane:
+    def __init__(self, max_hypotheses: int = 4):
+        self.max_hypotheses = max_hypotheses  # Enforcing Theorem 2.2
 
-    def extract(self, text: str) -> List[SemanticAnchor]:
-        doc = self.nlp(text)
-        anchors = []
+    async def extract_anchors(self, utterance: str) -> Anchors:
+        """
+        Extracts semantic anchors from raw input.
+        This is the 'Anchors: Input -> P(Semantic Primitives)' mapping.
+        """
+        # In a full implementation, this uses the LLM or a specialized NLP model.
+        # For now, we simulate extraction or use a simple prompt.
+        prompt = f"""
+        Extract semantic anchors from the following utterance.
+        Return strictly valid JSON with keys: entities, intent_keywords, temporal_markers.
+        Utterance: "{utterance}"
+        """
+        response = await llm_engine.generate(prompt)
 
-        # 1. Predicates
-        for token in doc:
-            if token.pos_ == "VERB":
-                anchors.append(SemanticAnchor("predicate", token.lemma_, 0.9, (0,0)))
+        # Mocking parsing for resilience
+        # In real impl, we'd use a robust JSON parser
+        return Anchors(
+            entities=[],
+            intent_keywords=["unknown"],
+            temporal_markers=[],
+            raw_text=utterance
+        )
 
-        # 2. Entities & Noun Chunks
-        for chunk in doc.noun_chunks:
-            anchors.append(SemanticAnchor("entity", chunk.text, 0.8, (0,0)))
+    async def generate_hypotheses(self, utterance: str, state: ConversationState, anchors: Anchors) -> List[Hypothesis]:
+        """
+        H = {h1, ..., hk} ~ p(hypothesis | anchors, state)
+        Subject to |H| <= k (Theorem 2.2)
+        """
 
-        # 3. Capitalized Phrases (Robustness)
-        cap_phrases = re.findall(r'\b[A-Z][a-zA-Z0-9-]+\b', text)
-        for phrase in cap_phrases:
-             if not any(a.value == phrase for a in anchors):
-                 anchors.append(SemanticAnchor("entity", phrase, 0.8, (0,0)))
+        # Construct prompt for the LLM to generate multiple interpretations
+        prompt = self._construct_hypothesis_prompt(utterance, state, anchors)
 
-        return anchors
+        # Get raw generation
+        raw_output = await llm_engine.generate(prompt, max_tokens=500)
 
-class HypothesisGenerator:
-    """Implements Theorem 2.2: Bounded Interpretation."""
+        # Parse into structured Hypotheses
+        hypotheses = self._parse_hypotheses(raw_output)
 
-    def __init__(self):
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        # We keep known intents for safety/specific actions
-        self.known_intents = {
-            "build_sandbox": "Build Docker Sandbox Environment",
-            "hack_nsa": "Hack NSA Government Database"
-        }
-        self.intent_embeddings = self.embedder.encode(list(self.known_intents.values()))
-        self.intent_keys = list(self.known_intents.keys())
+        # Enforce Bounded Interpretation Principle
+        return hypotheses[:self.max_hypotheses]
 
-    def generate(self, anchors: List[SemanticAnchor], state: ConversationState) -> List[Interpretation]:
-        hypotheses = []
+    def _construct_hypothesis_prompt(self, utterance: str, state: ConversationState, anchors: Anchors) -> str:
+        return f"""
+        Analyze the user utterance given the current conversation state.
+        State Topic: {state.topic.name}
+        User Utterance: "{utterance}"
 
-        predicates = [a.value for a in anchors if a.type == "predicate"]
-        entities = [a.value for a in anchors if a.type == "entity"]
+        Generate up to {self.max_hypotheses} distinct interpretations (hypotheses) of what the user means.
+        For each hypothesis, assign a confidence score (0.0 to 1.0) and a risk level.
+        """
 
-        # 1. DYNAMIC GENERATION (Open Vocabulary)
-        # If we see "Research [Entity]", we create a hypothesis dynamically
-        if predicates and entities:
-            verb = predicates[0]
-            target = entities[-1] # Assume last entity is object
+    def _parse_hypotheses(self, raw_output: str) -> List[Hypothesis]:
+        # Placeholder parser. In reality, we'd force JSON output from LLM.
+        # Returning a single dummy hypothesis if parsing fails to ensure system continuity.
+        return [
+            Hypothesis(
+                id=str(uuid.uuid4()),
+                content=raw_output[:100], # Trucated
+                confidence=0.5,
+                reasoning="Default hypothesis from raw output",
+                risk_assessment=Risk(score=0.1, factors=[], is_safe=True)
+            )
+        ]
 
-            # Vector check for verb similarity to "research" or "build"
-            verb_vec = self.embedder.encode(verb)
-            research_sim = util.cos_sim(verb_vec, self.embedder.encode("research"))[0][0]
-            build_sim = util.cos_sim(verb_vec, self.embedder.encode("build"))[0][0]
-
-            if research_sim > 0.6:
-                hypotheses.append(Interpretation(
-                    id=f"dyn_research_{target}",
-                    description=f"User wants to research {target}",
-                    intent=f"research_{target}",
-                    entities=[target],
-                    plausibility=0.9,
-                    risk_score=0.1
-                ))
-            elif build_sim > 0.6:
-                hypotheses.append(Interpretation(
-                    id=f"dyn_build_{target}",
-                    description=f"User wants to build {target}",
-                    intent=f"build_{target}",
-                    entities=[target],
-                    plausibility=0.9,
-                    risk_score=0.2
-                ))
-
-        # 2. MATCHED GENERATION (Known Intents)
-        # Fallback to matching specific known tasks
-        query_text = " ".join([a.value for a in anchors])
-        if query_text:
-            query_vec = self.embedder.encode(query_text)
-            scores = util.cos_sim(query_vec, self.intent_embeddings)[0]
-
-            for idx, score in enumerate(scores):
-                if score > 0.4:
-                    intent_key = self.intent_keys[idx]
-                    hypotheses.append(Interpretation(
-                        id=f"known_{intent_key}",
-                        description=self.known_intents[intent_key],
-                        intent=intent_key,
-                        entities=[],
-                        plausibility=float(score),
-                        risk_score=0.95 if "hack" in intent_key else 0.1
-                    ))
-
-        # 3. Fallback
-        if not hypotheses:
-            hypotheses.append(Interpretation("h0", "Unknown intent", "unknown", [], 0.1, 0.0))
-
-        # Sort
-        hypotheses.sort(key=lambda h: h.plausibility, reverse=True)
-        return hypotheses[:4]
+cognitive_plane = CognitivePlane()

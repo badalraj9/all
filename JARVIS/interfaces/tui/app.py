@@ -107,6 +107,9 @@ class JarvisApp(App):
 
     @work
     async def start_jarvis(self):
+        # Initialize ULE
+        await ule_engine.initialize()
+
         # Load Plugins
         await plugin_loader.load_all()
         logger.info("Plugins Loaded.")
@@ -137,20 +140,27 @@ class JarvisApp(App):
         # --- THE ULE BRAIN TRANSPLANT ---
         # Instead of parsing "Build X" manually, we send it to ULE
 
-        response, meta = ule_engine.process_turn(cmd)
+        # Using "admin" as default user_id for TUI
+        response, meta = await ule_engine.process_turn("admin", cmd)
 
         # Update Brain Monitor
         self.query_one("#brain-trust", Label).update(f"Trust: {meta['state']['trust']:.2f}")
         self.query_one("#brain-move", Label).update(f"Move: {meta['move']}")
-        self.query_one("#brain-ambiguity", Label).update(f"Rationale: {meta['rationale']}")
+        # self.query_one("#brain-ambiguity", Label).update(f"Rationale: {meta['rationale']}")
+        # Rationale might be too long for label, using Rationale in log instead
+        logger.info(f"Rationale: {meta['rationale']}")
+
+        ambiguity = meta['state'].get('ambiguity', 0.0)
+        self.query_one("#brain-ambiguity", Label).update(f"Ambiguity: {ambiguity:.2f}")
 
         logger.info(f"[bold blue]JARVIS:[/bold blue] {response}")
 
         # If Move was PROPOSE, trigger Mission Control
         if meta.get("action_payload") and meta["move"] == "PROPOSE":
-            goal = meta["action_payload"]["goal"]
-            logger.info(f"Initiating Mission from ULE: {goal}")
-            await event_bus.emit("mission.create", {"goal": goal}, source="ule")
+            goal = meta["action_payload"].get("goal")
+            if goal:
+                logger.info(f"Initiating Mission from ULE: {goal}")
+                await event_bus.emit("mission.create", {"goal": goal}, source="ule")
 
 if __name__ == "__main__":
     app = JarvisApp()

@@ -23,8 +23,14 @@ websockets
 # Intelligence & NLP
 spacy
 nltk
-transformers
-torch  # Maybe optional depending on size, but ORE uses it. keeping it for now.
+transformers<4.49
+torch
+airllm
+optimum<2.0
+sentencepiece
+bitsandbytes
+accelerate
+scipy
 
 # Utilities
 msgpack
