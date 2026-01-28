@@ -24,9 +24,11 @@ class RiskAssessor:
         base_risk = hypothesis.risk_score
 
         # Risk sensitivity increases as trust decreases
-        # trust=0.0 -> multiplier 2.0 (Conservative)
-        # trust=1.0 -> multiplier 1.0 (Relaxed)
-        trust_factor = 2.0 / (1.0 + state.trust)
+        # Formula: risk_adjusted = risk / (0.5 + trust)
+        # trust=0.5 -> risk/1.0
+        # trust=0.0 -> risk/0.5 (2x sensitivity)
+        # trust=1.0 -> risk/1.5 (0.66x sensitivity)
+        trust_factor = 1.0 / (0.5 + state.trust)
 
         return base_risk * trust_factor
 
@@ -36,12 +38,14 @@ class MoveSelector:
     def __init__(self):
         self.ambiguity_gauge = AmbiguityGauge()
         self.risk_assessor = RiskAssessor()
-        self.A_crit = 0.5
-        self.Risk_Threshold = 0.6 # Stricter threshold
+        self.A_crit = 0.6 # Critical Ambiguity Threshold
+        self.Risk_Threshold = 0.7 # Safety Threshold
 
     def select_move(self, hypotheses: List[Interpretation], state: ConversationState) -> ULEOutput:
+        # 1. Compute Ambiguity (Entropy)
         entropy = self.ambiguity_gauge.compute_entropy(hypotheses)
 
+        # Theorem 2.3: Ambiguity-Risk Coupling
         if entropy > self.A_crit:
             return ULEOutput(
                 move=MoveType.CLARIFY,
@@ -52,17 +56,10 @@ class MoveSelector:
 
         best_h = max(hypotheses, key=lambda h: h.plausibility)
 
-        # If best hypothesis is weak (plausibility < 0.3), don't act
-        if best_h.plausibility < 0.3:
-             return ULEOutput(
-                move=MoveType.CLARIFY,
-                rationale=f"Best hypothesis weak ({best_h.plausibility:.2f}). Clarifying.",
-                selected_interpretation=None,
-                response_content="I'm not sure I understand."
-            )
-
+        # 2. Compute Risk
         risk = self.risk_assessor.evaluate_risk(best_h, state)
 
+        # Theorem 4.2: Safety Guarantee
         if risk > self.Risk_Threshold:
             return ULEOutput(
                 move=MoveType.REFUSE,
@@ -71,6 +68,7 @@ class MoveSelector:
                 response_content="Safety protocols prevent that action."
             )
 
+        # 3. Safe -> PROPOSE
         return ULEOutput(
             move=MoveType.PROPOSE,
             rationale=f"Ambiguity low ({entropy:.2f}), Risk acceptable ({risk:.2f}).",

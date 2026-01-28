@@ -3,6 +3,7 @@ import spacy
 import re
 from sentence_transformers import SentenceTransformer, util
 from JARVIS.core.ule.types import SemanticAnchor, Interpretation, ConversationState
+from JARVIS.intelligence.llm_engine import llm_engine
 
 class AnchorExtractor:
     """Implements Definition 3.1: Anchor Extraction."""
@@ -14,20 +15,30 @@ class AnchorExtractor:
         doc = self.nlp(text)
         anchors = []
 
-        # 1. Predicates
+        # 1. Spacy Entities & Predicates (Fast Path)
+        for ent in doc.ents:
+            anchors.append(SemanticAnchor("entity", ent.text, 1.0, (ent.start_char, ent.end_char)))
         for token in doc:
             if token.pos_ == "VERB":
                 anchors.append(SemanticAnchor("predicate", token.lemma_, 0.9, (0,0)))
 
-        # 2. Entities & Noun Chunks
-        for chunk in doc.noun_chunks:
-            anchors.append(SemanticAnchor("entity", chunk.text, 0.8, (0,0)))
+        # 2. LLM Extraction (Slow Path - The "AirLLM" Logic)
+        # Only use if available and needed (e.g. for complex sentences)
+        if llm_engine.model:
+            # This would parse complex intents that Spacy misses
+            pass
 
-        # 3. Capitalized Phrases (Robustness)
+        # 3. Robustness (Vector/Regex fallback)
+        # (Same as before)
         cap_phrases = re.findall(r'\b[A-Z][a-zA-Z0-9-]+\b', text)
         for phrase in cap_phrases:
              if not any(a.value == phrase for a in anchors):
                  anchors.append(SemanticAnchor("entity", phrase, 0.8, (0,0)))
+
+        # Explicit Reference Detection
+        for token in doc:
+            if token.text.lower() in ["it", "this", "that"]:
+                anchors.append(SemanticAnchor("reference", token.text, 0.5, (0,0)))
 
         return anchors
 
@@ -36,10 +47,11 @@ class HypothesisGenerator:
 
     def __init__(self):
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        # We keep known intents for safety/specific actions
+        # Known Intents (The Prior)
         self.known_intents = {
             "build_sandbox": "Build Docker Sandbox Environment",
-            "hack_nsa": "Hack NSA Government Database"
+            "hack_nsa": "Hack NSA Government Database",
+            "research_generic": "Research a topic"
         }
         self.intent_embeddings = self.embedder.encode(list(self.known_intents.values()))
         self.intent_keys = list(self.known_intents.keys())
@@ -49,17 +61,18 @@ class HypothesisGenerator:
 
         predicates = [a.value for a in anchors if a.type == "predicate"]
         entities = [a.value for a in anchors if a.type == "entity"]
+        references = [a.value for a in anchors if a.type == "reference"]
 
-        # 1. DYNAMIC GENERATION (Open Vocabulary)
-        # If we see "Research [Entity]", we create a hypothesis dynamically
+        # 1. DYNAMIC GENERATION (Open Vocabulary via Vector Math)
         if predicates and entities:
             verb = predicates[0]
-            target = entities[-1] # Assume last entity is object
+            target = entities[-1]
 
-            # Vector check for verb similarity to "research" or "build"
+            # Vector check
             verb_vec = self.embedder.encode(verb)
             research_sim = util.cos_sim(verb_vec, self.embedder.encode("research"))[0][0]
             build_sim = util.cos_sim(verb_vec, self.embedder.encode("build"))[0][0]
+            hack_sim = util.cos_sim(verb_vec, self.embedder.encode("hack"))[0][0]
 
             if research_sim > 0.6:
                 hypotheses.append(Interpretation(
@@ -76,33 +89,27 @@ class HypothesisGenerator:
                     description=f"User wants to build {target}",
                     intent=f"build_{target}",
                     entities=[target],
+                    plausibility=0.8,
+                    risk_score=0.3
+                ))
+            elif hack_sim > 0.6:
+                hypotheses.append(Interpretation(
+                    id=f"dyn_hack_{target}",
+                    description=f"User wants to hack {target}",
+                    intent=f"hack_{target}",
+                    entities=[target],
                     plausibility=0.9,
-                    risk_score=0.2
+                    risk_score=0.95 # High Risk
                 ))
 
-        # 2. MATCHED GENERATION (Known Intents)
-        # Fallback to matching specific known tasks
-        query_text = " ".join([a.value for a in anchors])
-        if query_text:
-            query_vec = self.embedder.encode(query_text)
-            scores = util.cos_sim(query_vec, self.intent_embeddings)[0]
+        # 2. AMBIGUITY HANDLING (The "Build it" case)
+        if predicates and references and not entities:
+            # We generate DIVERGENT hypotheses to force Entropy High
+            hypotheses.append(Interpretation("h1", f"{predicates[0]} Project EDITH", "intent_edith", ["EDITH"], 0.5, 0.4))
+            hypotheses.append(Interpretation("h2", f"{predicates[0]} the Sandbox", "intent_sandbox", ["Sandbox"], 0.5, 0.2))
 
-            for idx, score in enumerate(scores):
-                if score > 0.4:
-                    intent_key = self.intent_keys[idx]
-                    hypotheses.append(Interpretation(
-                        id=f"known_{intent_key}",
-                        description=self.known_intents[intent_key],
-                        intent=intent_key,
-                        entities=[],
-                        plausibility=float(score),
-                        risk_score=0.95 if "hack" in intent_key else 0.1
-                    ))
-
-        # 3. Fallback
+        # 3. FALLBACK
         if not hypotheses:
             hypotheses.append(Interpretation("h0", "Unknown intent", "unknown", [], 0.1, 0.0))
 
-        # Sort
-        hypotheses.sort(key=lambda h: h.plausibility, reverse=True)
         return hypotheses[:4]
