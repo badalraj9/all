@@ -4,6 +4,8 @@ from JARVIS.core.ule.cognitive import cognitive_plane
 from JARVIS.core.ule.control import controller
 from JARVIS.core.ule.dynamics import dynamics
 from JARVIS.intelligence.llm_engine import llm_engine
+# Import TTS Engine
+from JARVIS.plugins.voice_interface.tts import tts_engine
 from loguru import logger
 import asyncio
 
@@ -41,11 +43,15 @@ class ULEEngine:
         # 4. Realization (M -> Response Text)
         response_text = await self._realize_move(move, state)
 
-        # 5. Dynamics (f): S_{t+1} = f(S_t, U_t, R_t)
+        # 5. Voice Synthesis (The "Iron Man" Feature)
+        # We fire and forget the TTS task so it doesn't block the UI update
+        asyncio.create_task(tts_engine.speak(response_text))
+
+        # 6. Dynamics (f): S_{t+1} = f(S_t, U_t, R_t)
         new_state = dynamics.update(state, user_text, move)
         self.states[user_id] = new_state
 
-        # 6. Metadata for UI/Systems
+        # 7. Metadata for UI/Systems
         meta = {
             "state": {
                 "trust": new_state.trust,

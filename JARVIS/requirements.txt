@@ -42,3 +42,7 @@ pymupdf
 # Interface (TUI)
 rich
 textual
+
+# Voice
+edge-tts
+pygame
