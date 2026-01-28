@@ -13,7 +13,11 @@ except ImportError:
 class LLMEngine:
     _instance = None
 
-    def __init__(self, model_path: str = "garage-bAInd/Platypus2-70B-instruct"):
+    # "Potato Mode" Configuration:
+    # We switch to Llama-3-8B-Instruct (approx 5GB in 4-bit)
+    # This fits easily on disk and AirLLM streams it layer-by-layer to 4GB VRAM.
+    # The 70B model was too ambitious for a 4GB card (even with AirLLM, it's slow).
+    def __init__(self, model_path: str = "meta-llama/Meta-Llama-3-8B-Instruct"):
         self.model = None
         self.tokenizer = None
         self.model_path = model_path
