@@ -3,69 +3,64 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Set, Optional, Any
 import math
 
-# =============================================================================
-# DEFINITIONS (Part I)
-# =============================================================================
-
 class MoveType(Enum):
-    """The Conversational Move Algebra (Part IV)."""
-    ACK = auto()           # Minimal response
-    CLARIFY = auto()       # Reduce ambiguity
-    ANSWER = auto()        # Provide information
-    EXPLAIN = auto()       # Answer + reasoning
-    PROPOSE = auto()       # Suggest action
-    REFUSE = auto()        # Safe rejection
-    SUMMARIZE = auto()     # Compression
-    META = auto()          # Talk about conversation
+    ACK = auto()
+    CLARIFY = auto()
+    ANSWER = auto()
+    EXPLAIN = auto()
+    PROPOSE = auto()
+    REFUSE = auto()
+    SUMMARIZE = auto()
+    META = auto()
 
 @dataclass
 class SemanticAnchor:
-    """Definition 3.1: Semantic Anchors"""
-    type: str # 'entity', 'predicate', 'temporal'
+    type: str
     value: str
     confidence: float
-    source_span: tuple # (start, end) in text
+    source_span: tuple
 
 @dataclass
 class Interpretation:
-    """Definition 1.3: Single Hypothesis h_i"""
     id: str
     description: str
     intent: str
     entities: List[str]
-    plausibility: float # p(h)
-    risk_score: float   # risk(h)
+    plausibility: float
+    risk_score: float
 
 @dataclass
 class ConversationState:
-    """Definition 1.1: State Vector S_t"""
-    # T: Topic Manifold (Simplified as current topic string for V1)
+    """Definition 1.1: State Vector S_t with Goal Stack."""
     topic: str = "general"
-
-    # E: Entity Grounding
     entities: Dict[str, Any] = field(default_factory=dict)
 
-    # G: Goal Distribution (Simplified as active goal)
+    # G: Goal Distribution -> Now a Stack for context retention
+    goal_stack: List[str] = field(default_factory=list)
     active_goal: Optional[str] = None
 
-    # P: Posture
     posture: str = "neutral"
-
-    # Tau: Trust Scalar [0,1] (Theorem 2.3/2.4)
     trust: float = 0.5
-
-    # Epsilon: Explicitness Scalar [0,1] (Theorem 2.5)
     explicitness: float = 0.5
-
-    # Delta: Unresolved Gaps
     unresolved_gaps: List[str] = field(default_factory=list)
+
+    def push_goal(self, goal: str):
+        if self.active_goal:
+            self.goal_stack.append(self.active_goal)
+        self.active_goal = goal
+
+    def pop_goal(self):
+        if self.goal_stack:
+            self.active_goal = self.goal_stack.pop()
+        else:
+            self.active_goal = None
 
     def to_dict(self):
         return {
             "topic": self.topic,
-            "trust": self.trust,
-            "explicitness": self.explicitness,
-            "gaps": len(self.unresolved_gaps)
+            "active_goal": self.active_goal,
+            "stack_depth": len(self.goal_stack),
+            "trust": self.trust
         }
 
 @dataclass
