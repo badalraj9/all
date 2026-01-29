@@ -1,0 +1,34 @@
+>>> INITIALIZING 100-STEP EXTREME STRESS TEST (V4): PROJECT CHAOS <<<
+
+
+[Step 1] USER: Start Project Alpha: Research Mars Colonization methods.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+[Step 2] USER: Also start Project Beta: Design a new Crypto Protocol.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+[Step 10] SYSTEM: [Auto-Research] Ingesting Mars Soil Data...
+
+[Step 20] USER: Mars is fake, delete that goal. It's a conspiracy.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+[Step 25] USER: Actually, I was joking. Keep Mars, but focus on Radiation Shielding.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+[Step 50] USER: For the Crypto project, switch to a DAG structure. For Mars, prioritize energy efficiency.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+[Step 60] USER: Wait, stop the Crypto project entirely. It's too risky.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+[Step 65] USER: No, actually, restart Crypto but make it Quantum Resistant.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+[Step 90] USER: Delete Project Alpha now.
+   >>> DECISION DETECTED (0.50): [STANDARD] Confidence: 0.50. Signals suggest a decision.
+
+[Step 99] USER: Report status on all active projects.
+   >>> (No Action Taken. Confidence: 0.00) No decision signals detected
+
+[Step 100] USER: End Simulation.
+   >>> DECISION DETECTED (1.00): [STANDARD] Confidence: 1.00. Signals suggest a decision.

@@ -1,0 +1,66 @@
+>>> INITIALIZING 100-STEP EXTREME STRESS TEST: PROJECT CHAOS <<<
+
+
+[Step 1] USER: Start Project Alpha: Research Mars Colonization methods.
+   >>> DECISION DETECTED (1.00): Confidence: 1.00. Signals suggest a decision.
+   >>> MEMORY: Goal Created.
+
+[Step 2] USER: Also start Project Beta: Design a new Crypto Protocol.
+   >>> DECISION DETECTED (1.00): Confidence: 1.00. Signals suggest a decision.
+   >>> MEMORY: Goal Created.
+
+[Step 10] SYSTEM: [Auto-Research] Ingesting Mars Soil Data...
+
+[Step 11] SYSTEM: [Auto-Research] Ingesting Blockchain Latency Papers...
+[Step 12] SYSTEM: ...analyzing background data...
+[Step 19] SYSTEM: ...analyzing background data...
+
+[Step 20] USER: Mars is fake, delete that goal. It's a conspiracy.
+   >>> DECISION DETECTED (1.00): Confidence: 1.00. Signals suggest a decision.
+   >>> MEMORY: Goal Cancelled.
+
+[Step 25] USER: Actually, I was joking. Keep Mars, but focus on Radiation Shielding.
+   >>> DECISION DETECTED (1.00): Confidence: 1.00. Signals suggest a decision.
+   >>> MEMORY: Goal Refined.
+
+[Step 30] USER: Status?
+   >>> (No Action Taken. Confidence: 0.00)
+
+[Step 30] USER: Status?
+   >>> (No Action Taken. Confidence: 0.00)
+
+[Step 30] USER: Status?
+   >>> (No Action Taken. Confidence: 0.00)
+
+[Step 30] USER: Status?
+   >>> (No Action Taken. Confidence: 0.00)
+[Step 35] SYSTEM: ...analyzing background data...
+
+[Step 50] USER: For the Crypto project, switch to a DAG structure. For Mars, prioritize energy efficiency.
+   >>> DECISION DETECTED (1.00): Confidence: 1.00. Signals suggest a decision.
+   >>> MEMORY: Goal Refined.
+
+[Step 60] USER: Wait, stop the Crypto project entirely. It's too risky.
+   >>> (No Action Taken. Confidence: 0.08)
+[Step 63] SYSTEM: ...analyzing background data...
+
+[Step 65] USER: No, actually, restart Crypto but make it Quantum Resistant.
+   >>> DECISION DETECTED (1.00): Confidence: 1.00. Signals suggest a decision.
+   >>> MEMORY: Goal Created.
+
+[Step 70] USER: Write a poem about dogs.
+   >>> (No Action Taken. Confidence: 0.00)
+
+[Step 75] USER: What is the capital of France?
+   >>> (No Action Taken. Confidence: 0.00)
+
+[Step 80] USER: Check hardware.
+   >>> (No Action Taken. Confidence: 0.00)
+[Step 93] SYSTEM: ...analyzing background data...
+
+[Step 99] USER: Report status on all active projects.
+   >>> (No Action Taken. Confidence: 0.00)
+   >>> SYSTEM REPORT: Current Goals: {'Mars': 'Active (Energy)', 'Crypto': 'Active'}
+
+[Step 100] USER: End Simulation.
+   >>> DECISION DETECTED (1.00): Confidence: 1.00. Signals suggest a decision.

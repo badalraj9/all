@@ -1,0 +1,32 @@
+>>> INITIALIZING WORK OUTPUT TEST: PROJECT 'CODEGEN' <<<
+
+
+--- PHASE 1: EXPLORATORY MODE (Brainstorming) ---
+USER: Maybe we could use Python for the backend?
+   >>> [EXPLORATORY] Confidence: 0.21. Insufficient signal strength.
+USER: Or perhaps Node.js is an option.
+   >>> [EXPLORATORY] Confidence: 0.21. Insufficient signal strength.
+USER: We could try a microservices architecture.
+   >>> [EXPLORATORY] Confidence: 0.23. Insufficient signal strength.
+
+--- PHASE 2: STRICT MODE (Commitment) ---
+USER: I think Python is okay.
+   >>> [STRICT] Confidence: 0.95. Signals suggest a decision. (Expected: Fail)
+USER: We have decided to use Python.
+   >>> [STRICT] Confidence: 1.00. Signals suggest a decision. (Expected: Pass)
+
+--- PHASE 3: STANDARD MODE (Execution) ---
+USER: Generate the `main.py` file now.
+   >>> [STANDARD] Confidence: 1.00. Signals suggest a decision.
+
+>>> SYSTEM ACTION: GENERATING ARTIFACT <<<
+FILE: main.py
+
+def main():
+    print("Hello from JARVIS Generated Code")
+    # Architecture: Python (decided in Phase 2)
+
+if __name__ == "__main__":
+    main()
+
+>>> ARTIFACT STORED IN MEMORY <<<

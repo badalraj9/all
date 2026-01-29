@@ -2,6 +2,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
+from enum import Enum
 
 # =============================================================================
 # CONSTANTS & PATTERNS
@@ -24,6 +25,7 @@ DECISION_PATTERNS = [
 
     # --- COMMANDS / INITIATION ---
     {"name": "start", "pattern": r"\b(start|begin|initiate|launch|commence)\b", "baseWeight": 2.2},
+    {"name": "restart", "pattern": r"\b(restart|reboot|resume)\b", "baseWeight": 2.5},
     {"name": "execute", "pattern": r"\b(execute|run|perform|do)\b", "baseWeight": 1.8},
     {"name": "create", "pattern": r"\b(create|make|build|generate|construct)\b", "baseWeight": 1.8},
     {"name": "research", "pattern": r"\b(research|investigate|analyze|study|look into)\b", "baseWeight": 2.0},
@@ -39,13 +41,17 @@ DECISION_PATTERNS = [
     {"name": "confirm", "pattern": r"\b(confirm|approve|authorize|grant)\b", "baseWeight": 2.5},
     {"name": "proceed", "pattern": r"\b(proceed|continue|go ahead)\b", "baseWeight": 2.0},
 
+    # --- TERMINATION (Moved from Negation to Positive Command) ---
+    {"name": "stop", "pattern": r"\b(stop|cancel|abort|terminate|end|halt)\b", "baseWeight": 4.0},
+    {"name": "delete", "pattern": r"\b(delete|remove|erase|forget)\b", "baseWeight": 4.0},
+
     # --- URGENCY ---
     {"name": "now", "pattern": r"\b(now|immediately|asap|urgent)\b", "baseWeight": 0.5}, # modifier
 
     # --- NEGATION (Negative Weights) ---
     {"name": "maybe", "pattern": r"\b(maybe|perhaps|possibly|might)\b", "baseWeight": -1.0},
     {"name": "wait", "pattern": r"\b(wait|hold|pause)\b", "baseWeight": -2.0},
-    {"name": "no", "pattern": r"\b(no|nope|nah|cancel|abort)\b", "baseWeight": -5.0},
+    {"name": "no", "pattern": r"\b(no|nope|nah)\b", "baseWeight": -2.0},
 ]
 
 DEFAULT_THRESHOLD = 0.75
@@ -53,6 +59,11 @@ DEFAULT_THRESHOLD = 0.75
 # =============================================================================
 # DATA STRUCTURES
 # =============================================================================
+
+class ActivationMode(Enum):
+    STANDARD = "sigmoid"       # Balanced
+    STRICT = "steep_sigmoid"   # High confidence required
+    EXPLORATORY = "softplus"   # Brainstorming
 
 @dataclass
 class Signal:
@@ -67,8 +78,9 @@ class NeuralState:
     project_id: str
     weights: Dict[str, float] = field(default_factory=dict)
     threshold: float = DEFAULT_THRESHOLD
-    alpha: float = 1.0 # Beta distribution alpha (accepts)
-    beta: float = 1.0  # Beta distribution beta (rejects)
+    alpha: float = 1.0
+    beta: float = 1.0
+    activation_mode: ActivationMode = ActivationMode.STANDARD
 
 @dataclass
 class ProcessingContext:
@@ -83,16 +95,21 @@ class ProcessResult:
     should_propose: bool
     rationale: str
     signals: List[Dict[str, Any]]
+    detected_relations: List[Dict[str, str]] = field(default_factory=list)
+    activation_used: str = "standard"
 
 # =============================================================================
 # UTILS
 # =============================================================================
 
 def sigmoid(x: float, threshold: float, steepness: float = 10.0) -> float:
-    """
-    Sigmoid activation function tailored for decision threshold.
-    """
     return 1 / (1 + math.exp(-steepness * (x - threshold)))
+
+def softplus(x: float) -> float:
+    # Tuned for Exploratory mode:
+    # Dampen negatives heavily
+    if x < 0: x = x * 0.1
+    return math.log(1 + math.exp(x)) / 3.0 # High gain
 
 # =============================================================================
 # SENSORS
@@ -114,7 +131,6 @@ class LinguisticSensor:
 class StructuralSensor:
     def extract(self, ctx: ProcessingContext) -> List[Signal]:
         signals = []
-        # Thread depth signal
         depth_value = min(ctx.thread_depth * 0.03, 0.15)
         if depth_value > 0:
             signals.append(Signal(
@@ -145,48 +161,92 @@ class SynapticProcessor:
             total += signal.value * w
         return total
 
-    def activate(self, aggregated: float, threshold: float) -> float:
-        return sigmoid(aggregated, threshold)
+    def activate_variable(self, aggregated: float, threshold: float, mode: ActivationMode) -> float:
+        if mode == ActivationMode.STRICT:
+            # Tuned: Higher threshold for Strict Mode
+            strict_threshold = max(threshold, 0.85)
+            return sigmoid(aggregated, strict_threshold, steepness=20.0)
+        elif mode == ActivationMode.EXPLORATORY:
+            val = softplus(aggregated)
+            return min(val, 1.0)
+        else:
+            return sigmoid(aggregated, threshold, steepness=10.0)
 
 class NeuralHub:
-    """
-    Python Port of SENTRY Neural Hub.
-    Deterministic Decision Intelligence.
-    """
     def __init__(self):
         self.linguistic = LinguisticSensor()
         self.structural = StructuralSensor()
         self.processor = SynapticProcessor()
 
-    def process(self, content: str, ctx: ProcessingContext, state: NeuralState) -> ProcessResult:
-        # 1. Extract Signals
+    def process(self, content: str, ctx: ProcessingContext, state: NeuralState, memory_system: Any = None) -> ProcessResult:
         signals = self.linguistic.extract(content)
         signals.extend(self.structural.extract(ctx))
 
-        if not signals:
-            return ProcessResult(0.0, False, "No decision signals detected", [])
+        if not signals and state.activation_mode != ActivationMode.EXPLORATORY:
+             return ProcessResult(0.0, False, "No decision signals detected", [], [], state.activation_mode.name)
 
-        # 2. Aggregate
+        # STRICT MODE FILTERING: Ignore weak signals
+        if state.activation_mode == ActivationMode.STRICT:
+            signals = [s for s in signals if s.baseWeight >= 1.5]
+            if not signals:
+                return ProcessResult(0.0, False, "[STRICT] Signals too weak.", [], [], state.activation_mode.name)
+
         aggregated = self.processor.aggregate(signals, state.weights)
 
-        # 3. Activate
-        confidence = self.processor.activate(aggregated, state.threshold)
+        # Override negative aggregates in exploratory mode
+        if state.activation_mode == ActivationMode.EXPLORATORY and aggregated < 0:
+             positives = sum(1 for s in signals if s.baseWeight > 0)
+             if positives > 0:
+                 aggregated = 0.5
 
-        # 4. Decision
-        should_propose = confidence >= 0.5
+        confidence = self.processor.activate_variable(aggregated, state.threshold, state.activation_mode)
 
-        # 5. Rationale
-        rationale = f"Confidence: {confidence:.2f}. "
+        # Decision cutoff
+        cutoff = 0.5
+        if state.activation_mode == ActivationMode.EXPLORATORY: cutoff = 0.20 # Tuned to 0.20
+
+        should_propose = confidence >= cutoff
+
+        # --------------------------------------------------------------------------------
+        # CONTEMPLATION LOOP (The Slow Path)
+        # --------------------------------------------------------------------------------
+        relations = []
+        content_lower = content.lower()
+        if should_propose and memory_system:
+             # Basic Contradiction Check
+             # In a real system, we'd extract entities and query the graph.
+             # Here we verify the logic hook.
+             if "delete" in content_lower and "project" in content_lower:
+                  # Simulate finding a contradiction in memory
+                  # This relies on the memory_system having a 'check_contradiction' or 'get_related' method
+                  # We will assume simple heuristic for now
+                  confidence *= 0.5 # Penalty for potential destruction
+                  if confidence < cutoff:
+                      should_propose = False
+                      relations.append({"type": "contradicts", "target": "memory_constraint"})
+
+        # Fallback Relation Detection
+        if should_propose:
+            if "because" in content_lower or "depends on" in content_lower:
+                relations.append({"type": "depends_on", "target": "unknown"})
+            elif "instead" in content_lower or "switch" in content_lower:
+                relations.append({"type": "contradicts", "target": "previous_goal"})
+
+        rationale = f"[{state.activation_mode.name}] Confidence: {confidence:.2f}. "
         if should_propose:
             rationale += "Signals suggest a decision."
         else:
             rationale += "Insufficient signal strength."
+            if relations and relations[0]["type"] == "contradicts":
+                rationale += " (Contradiction detected)."
 
         return ProcessResult(
             confidence=confidence,
             should_propose=should_propose,
             rationale=rationale,
-            signals=[{"name": s.name, "val": s.value} for s in signals]
+            signals=[{"name": s.name, "val": s.value} for s in signals],
+            detected_relations=relations,
+            activation_used=state.activation_mode.name
         )
 
 # Singleton

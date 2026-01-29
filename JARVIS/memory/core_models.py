@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional, Dict, List
+from dataclasses import dataclass, field
+from typing import Optional, Dict, List, Any
 import uuid
 import time
 from enum import Enum
@@ -8,11 +8,25 @@ import json
 class MemoryType(Enum):
     FACT = "fact"
     BELIEF = "belief"
+    GOAL = "goal"
+    CONSTRAINT = "constraint"
+
+class RelationType(Enum):
+    # Major Relations
+    DEPENDS_ON = "depends_on"       # A depends on B
+    CONTRADICTS = "contradicts"     # A conflicts with B
+    CONTAINS = "contains"           # A includes B
+
+    # Partial Relations
+    RELATES_TO = "relates_to"       # A is relevant to B
+    PREFERS = "prefers"             # User prefers A over B (if A is preference, B is option)
+    ASSOCIATED_WITH = "associated_with" # Soft link
 
 @dataclass
 class TruthVector:
     """
     Mathematical representation of memory reliability.
+    Assimilated from MemoryThread/tms_service.py
     """
     confidence: float  # 0.0 to 1.0: How certain are we?
     authority: float   # 0.0 to 1.0: How reliable is the source?
@@ -21,6 +35,7 @@ class TruthVector:
 
     def to_score(self) -> float:
         """Calculate weighted truth score"""
+        # Weights derived from MemoryThread defaults
         return (self.confidence * 0.4 +
                 self.authority * 0.3 +
                 self.freshness * 0.2 +
@@ -61,3 +76,14 @@ class MemoryEvent:
             timestamp=time.time(),
             antecedents=[]
         )
+
+@dataclass
+class Relation:
+    """
+    A directed edge in the Context Web.
+    """
+    source_id: str
+    target_id: str
+    relation_type: RelationType
+    weight: float = 1.0
+    metadata: Dict[str, Any] = field(default_factory=dict)

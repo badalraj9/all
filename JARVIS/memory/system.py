@@ -2,15 +2,17 @@ import json
 import uuid
 import time
 from typing import List, Optional, Dict
-from .core_models import MemoryEvent, TruthVector, MemoryType
+from .core_models import MemoryEvent, TruthVector, MemoryType, Relation, RelationType
 
 class MemorySystem:
     """
     Main entry point for JARVIS Memory (Truth Engine).
     Assimilated from MemoryThread, mapped to the schema.
+    Enhanced with Context Web (Graph) capabilities.
     """
     def __init__(self, postgres_client=None):
         self.postgres = postgres_client
+        self.graph = {} # In-memory graph cache: source_id -> [Relation]
 
     def log_event(self, actor: str, action: str, object_id: str, payload: Dict, confidence: float = 1.0) -> MemoryEvent:
         """
@@ -23,6 +25,49 @@ class MemorySystem:
             self._persist_event(event)
 
         return event
+
+    def add_relation(self, source_id: str, target_id: str, relation_type: str, weight: float = 1.0):
+        """
+        Add a semantic edge to the Context Web.
+        """
+        try:
+            rtype = RelationType(relation_type)
+        except ValueError:
+            print(f"Invalid relation type: {relation_type}")
+            return
+
+        relation = Relation(source_id, target_id, rtype, weight)
+
+        # Update Cache
+        if source_id not in self.graph:
+            self.graph[source_id] = []
+        self.graph[source_id].append(relation)
+
+        # Persist (Mocked for now, but would use `relations` table)
+        if self.postgres and hasattr(self.postgres, "execute"):
+             query = """
+             INSERT INTO relations (source_entity_id, target_entity_id, relation_type, confidence)
+             VALUES (%s, %s, %s, %s)
+             ON CONFLICT DO NOTHING
+             """
+             try:
+                 self.postgres.execute(query, (source_id, target_id, relation_type, weight))
+             except: pass
+
+    def get_related_entities(self, entity_id: str, relation_type: Optional[str] = None) -> List[Dict]:
+        """
+        Traverse the Context Web.
+        """
+        results = []
+        if entity_id in self.graph:
+            for rel in self.graph[entity_id]:
+                if relation_type is None or rel.relation_type.value == relation_type:
+                    results.append({
+                        "target_id": rel.target_id,
+                        "type": rel.relation_type.value,
+                        "weight": rel.weight
+                    })
+        return results
 
     def _persist_event(self, event: MemoryEvent):
         """
