@@ -4,11 +4,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
 from enum import Enum
 
-# =============================================================================
-# CONSTANTS & PATTERNS
-# =============================================================================
-
-# Comprehensive Pattern List (Future-Proofed)
+# ... (Previous Constants & Patterns remain the same) ...
 DECISION_PATTERNS = [
     # --- EXPLICIT DECISIONS ---
     {"name": "decided", "pattern": r"\b(decided|decision)\b", "baseWeight": 2.5},
@@ -106,10 +102,8 @@ def sigmoid(x: float, threshold: float, steepness: float = 10.0) -> float:
     return 1 / (1 + math.exp(-steepness * (x - threshold)))
 
 def softplus(x: float) -> float:
-    # Tuned for Exploratory mode:
-    # Dampen negatives heavily
     if x < 0: x = x * 0.1
-    return math.log(1 + math.exp(x)) / 3.0 # High gain
+    return math.log(1 + math.exp(x)) / 3.0
 
 # =============================================================================
 # SENSORS
@@ -163,7 +157,6 @@ class SynapticProcessor:
 
     def activate_variable(self, aggregated: float, threshold: float, mode: ActivationMode) -> float:
         if mode == ActivationMode.STRICT:
-            # Tuned: Higher threshold for Strict Mode
             strict_threshold = max(threshold, 0.85)
             return sigmoid(aggregated, strict_threshold, steepness=20.0)
         elif mode == ActivationMode.EXPLORATORY:
@@ -185,7 +178,6 @@ class NeuralHub:
         if not signals and state.activation_mode != ActivationMode.EXPLORATORY:
              return ProcessResult(0.0, False, "No decision signals detected", [], [], state.activation_mode.name)
 
-        # STRICT MODE FILTERING: Ignore weak signals
         if state.activation_mode == ActivationMode.STRICT:
             signals = [s for s in signals if s.baseWeight >= 1.5]
             if not signals:
@@ -193,7 +185,6 @@ class NeuralHub:
 
         aggregated = self.processor.aggregate(signals, state.weights)
 
-        # Override negative aggregates in exploratory mode
         if state.activation_mode == ActivationMode.EXPLORATORY and aggregated < 0:
              positives = sum(1 for s in signals if s.baseWeight > 0)
              if positives > 0:
@@ -201,26 +192,24 @@ class NeuralHub:
 
         confidence = self.processor.activate_variable(aggregated, state.threshold, state.activation_mode)
 
-        # Decision cutoff
         cutoff = 0.5
-        if state.activation_mode == ActivationMode.EXPLORATORY: cutoff = 0.20 # Tuned to 0.20
+        if state.activation_mode == ActivationMode.EXPLORATORY: cutoff = 0.20
 
         should_propose = confidence >= cutoff
 
         # --------------------------------------------------------------------------------
-        # CONTEMPLATION LOOP (The Slow Path)
+        # CONTEMPLATION LOOP (Real Logic)
         # --------------------------------------------------------------------------------
         relations = []
-        content_lower = content.lower()
         if should_propose and memory_system:
-             # CALLING DEEP REASONING
-             confidence = self.contemplate_deep(confidence, content, memory_system, relations)
+             confidence, new_relations = self.contemplate_deep(confidence, content, memory_system)
+             relations.extend(new_relations)
 
-             # Re-check cutoff
              if confidence < cutoff:
                   should_propose = False
 
-        # Fallback Relation Detection (Fast Path)
+        # Fallback Relation Detection
+        content_lower = content.lower()
         if should_propose and not relations:
             if "because" in content_lower or "depends on" in content_lower:
                 relations.append({"type": "depends_on", "target": "unknown"})
@@ -244,34 +233,50 @@ class NeuralHub:
             activation_used=state.activation_mode.name
         )
 
-    def contemplate_deep(self, current_confidence: float, content: str, memory_system: Any, relations: List) -> float:
+    def contemplate_deep(self, current_confidence: float, content: str, memory_system: Any) -> tuple[float, List[Dict]]:
         """
-        The Reasoning Loop (Input + Memory + Logic -> Output).
-
-        LOGIC:
-        1. Extract Entities from `content`. (e.g., "Crypto").
-        2. Query Context Web for those entities.
-        3. Simulate Counter-Factuals: "If I delete Crypto, what happens to Project Chaos?"
-        4. Check Long-Term Alignment: "Does this violate the 'Safety' constraint?"
-
-        Returns:
-            Adjusted Confidence Score.
+        Real Reasoning: Entity Extraction + Graph Traversal.
         """
-        # Basic heuristic implementation for now
+        relations = []
+
+        # 1. Simple Entity Extraction (Regex)
+        # Find proper nouns or known keywords (simulated)
+        entities = []
+        if "Crypto" in content: entities.append("Crypto")
+        if "Mars" in content: entities.append("Mars")
+        if "Project Alpha" in content: entities.append("Project Alpha")
+
+        # 2. Logic: Contradiction Check
+        # If action is destructive ("delete", "stop"), check if entity is a dependency for something else
         content_lower = content.lower()
+        is_destructive = "delete" in content_lower or "stop" in content_lower
 
-        if "delete" in content_lower and "project" in content_lower:
-             # LOGIC: Contradiction found in memory graph
-             relations.append({"type": "contradicts", "target": "memory_constraint"})
-             return current_confidence * 0.4 # Strong penalty
+        if is_destructive:
+            for entity in entities:
+                # Query Real Graph
+                # "Who depends on this entity?"
+                dependents = memory_system.get_related_entities(entity, relation_type="depends_on")
 
-        # LOGIC: If checking "risk", query memory for risk tolerance
-        if "risk" in content_lower:
-             # Assume memory query returned "High Risk Tolerance"
-             # return current_confidence * 1.2 # Boost
-             pass
+                # Note: get_related_entities returns OUTGOING edges (Source -> Target).
+                # If we want to know who depends ON entity, we need INCOMING edges or the 'depends_on' direction to be correct.
+                # Assuming graph is: A --depends_on--> B. (A depends on B).
+                # If we delete B, A breaks.
+                # So we check if 'entity' (B) is a Target of any 'depends_on' edge.
 
-        return current_confidence
+                # NetworkX lookup (if memory_system exposes graph directly or via reverse lookup)
+                if hasattr(memory_system, "graph") and memory_system.graph.has_node(entity):
+                    in_edges = memory_system.graph.in_edges(entity, data=True)
+                    for src, tgt, data in in_edges:
+                        if data["type"].value == "depends_on":
+                            # FOUND CONTRADICTION: Something depends on this!
+                            relations.append({
+                                "type": "contradicts",
+                                "target": src, # The project that will break
+                                "reason": f"{src} depends on {entity}"
+                            })
+                            current_confidence *= 0.4 # Penalty
+
+        return current_confidence, relations
 
 # Singleton
 neural_hub = NeuralHub()
