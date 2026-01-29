@@ -1,20 +1,51 @@
 import math
 import re
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Any
 
 # =============================================================================
 # CONSTANTS & PATTERNS
 # =============================================================================
 
+# Comprehensive Pattern List (Future-Proofed)
 DECISION_PATTERNS = [
-    {"name": "decided", "pattern": r"\b(decided|decision)\b", "baseWeight": 2.0},
-    {"name": "lets_go_with", "pattern": r"let'?s go with", "baseWeight": 2.5},
-    {"name": "will_use", "pattern": r"we('|ll)? use", "baseWeight": 1.5},
-    {"name": "final", "pattern": r"final(ized?)?", "baseWeight": 1.8},
-    {"name": "settled_on", "pattern": r"settled on", "baseWeight": 2.2},
-    {"name": "agreed", "pattern": r"agreed", "baseWeight": 1.2},
-    {"name": "pick", "pattern": r"\b(pick|choose|chose)\b", "baseWeight": 1.0},
+    # --- EXPLICIT DECISIONS ---
+    {"name": "decided", "pattern": r"\b(decided|decision)\b", "baseWeight": 2.5},
+    {"name": "lets_go_with", "pattern": r"let'?s (go with|do|use|try)", "baseWeight": 2.5},
+    {"name": "will_use", "pattern": r"we('|ll)? (use|adopt|implement)", "baseWeight": 2.0},
+    {"name": "final", "pattern": r"final(ized?)?", "baseWeight": 2.0},
+    {"name": "settled_on", "pattern": r"settled on", "baseWeight": 2.5},
+    {"name": "agreed", "pattern": r"agreed", "baseWeight": 2.0},
+
+    # --- SELECTION ---
+    {"name": "pick", "pattern": r"\b(pick|choose|chose|select)\b", "baseWeight": 1.5},
+    {"name": "prefer", "pattern": r"\b(prefer|leaning towards)\b", "baseWeight": 1.2},
+    {"name": "option", "pattern": r"option [A-Z0-9]", "baseWeight": 1.5},
+
+    # --- COMMANDS / INITIATION ---
+    {"name": "start", "pattern": r"\b(start|begin|initiate|launch|commence)\b", "baseWeight": 2.2},
+    {"name": "execute", "pattern": r"\b(execute|run|perform|do)\b", "baseWeight": 1.8},
+    {"name": "create", "pattern": r"\b(create|make|build|generate|construct)\b", "baseWeight": 1.8},
+    {"name": "research", "pattern": r"\b(research|investigate|analyze|study|look into)\b", "baseWeight": 2.0},
+
+    # --- MODIFICATION / PIVOT ---
+    {"name": "update", "pattern": r"\b(update|change|modify|revise|alter)\b", "baseWeight": 2.2},
+    {"name": "focus", "pattern": r"\b(focus|target|prioritize|concentrate)\b", "baseWeight": 2.2},
+    {"name": "switch", "pattern": r"\b(switch|pivot|shift)\b", "baseWeight": 2.0},
+    {"name": "instead", "pattern": r"\b(instead|rather)\b", "baseWeight": 1.5},
+
+    # --- CONFIRMATION ---
+    {"name": "yes", "pattern": r"\b(yes|yeah|yep|sure|okay|ok|correct)\b", "baseWeight": 1.0},
+    {"name": "confirm", "pattern": r"\b(confirm|approve|authorize|grant)\b", "baseWeight": 2.5},
+    {"name": "proceed", "pattern": r"\b(proceed|continue|go ahead)\b", "baseWeight": 2.0},
+
+    # --- URGENCY ---
+    {"name": "now", "pattern": r"\b(now|immediately|asap|urgent)\b", "baseWeight": 0.5}, # modifier
+
+    # --- NEGATION (Negative Weights) ---
+    {"name": "maybe", "pattern": r"\b(maybe|perhaps|possibly|might)\b", "baseWeight": -1.0},
+    {"name": "wait", "pattern": r"\b(wait|hold|pause)\b", "baseWeight": -2.0},
+    {"name": "no", "pattern": r"\b(no|nope|nah|cancel|abort)\b", "baseWeight": -5.0},
 ]
 
 DEFAULT_THRESHOLD = 0.75
