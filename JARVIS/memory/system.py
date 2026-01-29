@@ -54,6 +54,9 @@ class MemorySystem:
                  self.postgres.execute(query, (source_id, target_id, relation_type, weight))
              except: pass
 
+        # TRIGGER: Hebbian Update (Strengthen connection)
+        self.hebbian_update(source_id, target_id)
+
     def get_related_entities(self, entity_id: str, relation_type: Optional[str] = None) -> List[Dict]:
         """
         Traverse the Context Web.
@@ -68,6 +71,43 @@ class MemorySystem:
                         "weight": rel.weight
                     })
         return results
+
+    def spread_activation(self, start_node_id: str, initial_energy: float = 1.0, decay: float = 0.5) -> Dict[str, float]:
+        """
+        Simulates 'Thinking' by spreading energy through the Context Web.
+
+        LOGIC:
+        1. Start at `start_node_id` with `initial_energy`.
+        2. Propagate to neighbors: Energy = Current * EdgeWeight * Decay.
+        3. Stop when Energy < threshold (e.g., 0.1).
+
+        Returns:
+            Dict of {node_id: activation_level} - The "Context" for the current thought.
+        """
+        # Logic Placeholder
+        activated_nodes = {start_node_id: initial_energy}
+        # queue = [(start_node_id, initial_energy)]
+        # while queue:
+        #    curr, energy = queue.pop(0)
+        #    for neighbor in self.graph[curr]:
+        #        new_energy = energy * neighbor.weight * decay
+        #        if new_energy > 0.1:
+        #            activated_nodes[neighbor.id] = new_energy
+        #            queue.append((neighbor.id, new_energy))
+        return activated_nodes
+
+    def hebbian_update(self, node_a: str, node_b: str):
+        """
+        'Neurons that fire together, wire together.'
+
+        LOGIC:
+        1. Check if Edge(A, B) exists.
+        2. If yes, increase weight slightly (e.g., += 0.05).
+        3. Cap weight at 1.0.
+        4. If no edge, create a weak 'ASSOCIATED_WITH' edge (0.1).
+        """
+        # Logic Placeholder
+        pass
 
     def _persist_event(self, event: MemoryEvent):
         """

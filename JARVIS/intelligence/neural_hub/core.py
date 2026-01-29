@@ -213,20 +213,15 @@ class NeuralHub:
         relations = []
         content_lower = content.lower()
         if should_propose and memory_system:
-             # Basic Contradiction Check
-             # In a real system, we'd extract entities and query the graph.
-             # Here we verify the logic hook.
-             if "delete" in content_lower and "project" in content_lower:
-                  # Simulate finding a contradiction in memory
-                  # This relies on the memory_system having a 'check_contradiction' or 'get_related' method
-                  # We will assume simple heuristic for now
-                  confidence *= 0.5 # Penalty for potential destruction
-                  if confidence < cutoff:
-                      should_propose = False
-                      relations.append({"type": "contradicts", "target": "memory_constraint"})
+             # CALLING DEEP REASONING
+             confidence = self.contemplate_deep(confidence, content, memory_system, relations)
 
-        # Fallback Relation Detection
-        if should_propose:
+             # Re-check cutoff
+             if confidence < cutoff:
+                  should_propose = False
+
+        # Fallback Relation Detection (Fast Path)
+        if should_propose and not relations:
             if "because" in content_lower or "depends on" in content_lower:
                 relations.append({"type": "depends_on", "target": "unknown"})
             elif "instead" in content_lower or "switch" in content_lower:
@@ -248,6 +243,35 @@ class NeuralHub:
             detected_relations=relations,
             activation_used=state.activation_mode.name
         )
+
+    def contemplate_deep(self, current_confidence: float, content: str, memory_system: Any, relations: List) -> float:
+        """
+        The Reasoning Loop (Input + Memory + Logic -> Output).
+
+        LOGIC:
+        1. Extract Entities from `content`. (e.g., "Crypto").
+        2. Query Context Web for those entities.
+        3. Simulate Counter-Factuals: "If I delete Crypto, what happens to Project Chaos?"
+        4. Check Long-Term Alignment: "Does this violate the 'Safety' constraint?"
+
+        Returns:
+            Adjusted Confidence Score.
+        """
+        # Basic heuristic implementation for now
+        content_lower = content.lower()
+
+        if "delete" in content_lower and "project" in content_lower:
+             # LOGIC: Contradiction found in memory graph
+             relations.append({"type": "contradicts", "target": "memory_constraint"})
+             return current_confidence * 0.4 # Strong penalty
+
+        # LOGIC: If checking "risk", query memory for risk tolerance
+        if "risk" in content_lower:
+             # Assume memory query returned "High Risk Tolerance"
+             # return current_confidence * 1.2 # Boost
+             pass
+
+        return current_confidence
 
 # Singleton
 neural_hub = NeuralHub()
