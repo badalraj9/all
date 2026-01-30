@@ -1,0 +1,24 @@
+[LLM] PyTorch not found. Running in MOCK MODE.
+>>> FINAL WIRING TEST: INTENT -> TONE -> OUTPUT <<<
+
+
+[USER] Open the pod bay doors.
+[NEURAL HUB] Intent: COMMAND (Expected: COMMAND)
+[JARVIS] [LLM SIMULATION] [INST] You are JARVIS, an advanced AI assistant.
+
+CONTEXT DATA:
+- Item_0: {'user_input': 'Op...
+
+[USER] How far is Mars?
+[NEURAL HUB] Intent: QUERY (Expected: QUERY)
+[JARVIS] [LLM SIMULATION] [INST] You are JARVIS, an advanced AI assistant.
+
+CONTEXT DATA:
+- Item_0: {'user_input': 'Ho...
+
+[USER] I feel tired today.
+[NEURAL HUB] Intent: CHAT (Expected: CHAT)
+[JARVIS] [LLM SIMULATION] [INST] You are JARVIS, an advanced AI assistant.
+
+CONTEXT DATA:
+- Item_0: {'user_input': 'I ...
