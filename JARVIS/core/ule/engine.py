@@ -26,10 +26,10 @@ class ULEEngine:
             )
         return self.states[user_id]
 
-    async def process_turn(self, user_id: str, user_text: str) -> Tuple[str, Dict[str, Any]]:
+    async def process_turn(self, user_id: str, user_text: str, input_mode: str = "TEXT") -> Tuple[str, Dict[str, Any]]:
         # 1. Get State (S_t)
         state = self.get_or_create_state(user_id)
-        logger.info(f"ULE: Processing turn {state.turn_count} for user {user_id}. Trust={state.trust:.2f}")
+        logger.info(f"ULE: Processing turn {state.turn_count} for user {user_id} [Mode: {input_mode}]. Trust={state.trust:.2f}")
 
         # 2. Cognitive Plane (V): Input -> Hypotheses
         anchors = await cognitive_plane.extract_anchors(user_text)
@@ -41,11 +41,16 @@ class ULEEngine:
         logger.info(f"ULE: Selected Move: {move.type} | Rationale: {move.rationale}")
 
         # 4. Realization (M -> Response Text)
+        # For Voice, we might prefer shorter, more conversational output
+        if input_mode == "VOICE":
+            state.explicitness = max(0.0, state.explicitness - 0.2) # Bias towards conciseness for voice
+
         response_text = await self._realize_move(move, state)
 
-        # 5. Voice Synthesis (The "Iron Man" Feature)
-        # We fire and forget the TTS task so it doesn't block the UI update
-        asyncio.create_task(tts_engine.speak(response_text))
+        # 5. Voice Synthesis (Multimodal Routing)
+        if input_mode == "VOICE":
+            # Fire and forget the TTS task
+            asyncio.create_task(tts_engine.speak(response_text))
 
         # 6. Dynamics (f): S_{t+1} = f(S_t, U_t, R_t)
         new_state = dynamics.update(state, user_text, move)

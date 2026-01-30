@@ -11,6 +11,7 @@ Detailed architectural documentation for thesis and development:
 -   [**02 Memory Galaxy**](docs/02_MEMORY_GALAXY.md): Truth Vectors, Context Web, and Hebbian Learning.
 -   [**03 Cognitive Plugins**](docs/03_COGNITIVE_PLUGINS.md): ORE (Research) and MAREY (Saccadic Vision).
 -   [**04 Installation & Usage**](docs/04_INSTALLATION_AND_USAGE.md): Setup guide.
+-   [**05 Models & Config**](docs/05_MODELS_AND_CONFIGURATION.md): Voice/Text routing and LLM setup.
 
 ## 🚀 Quick Start
 
