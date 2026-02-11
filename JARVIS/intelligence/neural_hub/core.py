@@ -1,0 +1,314 @@
+import math
+import re
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any
+from enum import Enum
+
+# =============================================================================
+# CONSTANTS & PATTERNS
+# =============================================================================
+
+# Comprehensive Pattern List (Future-Proofed)
+DECISION_PATTERNS = [
+    # --- EXPLICIT DECISIONS ---
+    {"name": "decided", "pattern": r"\b(decided|decision)\b", "baseWeight": 2.5},
+    {"name": "lets_go_with", "pattern": r"let'?s (go with|do|use|try)", "baseWeight": 2.5},
+    {"name": "will_use", "pattern": r"we('|ll)? (use|adopt|implement)", "baseWeight": 2.0},
+    {"name": "final", "pattern": r"final(ized?)?", "baseWeight": 2.0},
+    {"name": "settled_on", "pattern": r"settled on", "baseWeight": 2.5},
+    {"name": "agreed", "pattern": r"agreed", "baseWeight": 2.0},
+
+    # --- SELECTION ---
+    {"name": "pick", "pattern": r"\b(pick|choose|chose|select)\b", "baseWeight": 1.5},
+    {"name": "prefer", "pattern": r"\b(prefer|leaning towards)\b", "baseWeight": 1.2},
+    {"name": "option", "pattern": r"option [A-Z0-9]", "baseWeight": 1.5},
+
+    # --- COMMANDS / INITIATION ---
+    {"name": "start", "pattern": r"\b(start|begin|initiate|launch|commence)\b", "baseWeight": 2.2},
+    {"name": "restart", "pattern": r"\b(restart|reboot|resume)\b", "baseWeight": 2.5},
+    {"name": "execute", "pattern": r"\b(execute|run|perform|do)\b", "baseWeight": 1.8},
+    {"name": "create", "pattern": r"\b(create|make|build|generate|construct)\b", "baseWeight": 1.8},
+    {"name": "research", "pattern": r"\b(research|investigate|analyze|study|look into)\b", "baseWeight": 2.0},
+    {"name": "control", "pattern": r"\b(open|close|turn on|turn off|enable|disable)\b", "baseWeight": 2.2}, # Added basic controls
+
+    # --- MODIFICATION / PIVOT ---
+    {"name": "update", "pattern": r"\b(update|change|modify|revise|alter)\b", "baseWeight": 2.2},
+    {"name": "focus", "pattern": r"\b(focus|target|prioritize|concentrate)\b", "baseWeight": 2.2},
+    {"name": "switch", "pattern": r"\b(switch|pivot|shift)\b", "baseWeight": 2.0},
+    {"name": "instead", "pattern": r"\b(instead|rather)\b", "baseWeight": 1.5},
+
+    # --- CONFIRMATION ---
+    {"name": "yes", "pattern": r"\b(yes|yeah|yep|sure|okay|ok|correct)\b", "baseWeight": 1.0},
+    {"name": "confirm", "pattern": r"\b(confirm|approve|authorize|grant)\b", "baseWeight": 2.5},
+    {"name": "proceed", "pattern": r"\b(proceed|continue|go ahead)\b", "baseWeight": 2.0},
+
+    # --- TERMINATION (Moved from Negation to Positive Command) ---
+    {"name": "stop", "pattern": r"\b(stop|cancel|abort|terminate|end|halt)\b", "baseWeight": 4.0},
+    {"name": "delete", "pattern": r"\b(delete|remove|erase|forget)\b", "baseWeight": 4.0},
+
+    # --- URGENCY ---
+    {"name": "now", "pattern": r"\b(now|immediately|asap|urgent)\b", "baseWeight": 0.5}, # modifier
+
+    # --- NEGATION (Negative Weights) ---
+    {"name": "maybe", "pattern": r"\b(maybe|perhaps|possibly|might)\b", "baseWeight": -1.0},
+    {"name": "wait", "pattern": r"\b(wait|hold|pause)\b", "baseWeight": -2.0},
+    {"name": "no", "pattern": r"\b(no|nope|nah)\b", "baseWeight": -2.0},
+]
+
+DEFAULT_THRESHOLD = 0.75
+
+# =============================================================================
+# DATA STRUCTURES
+# =============================================================================
+
+class ActivationMode(Enum):
+    STANDARD = "sigmoid"       # Balanced
+    STRICT = "steep_sigmoid"   # High confidence required
+    EXPLORATORY = "softplus"   # Brainstorming
+
+class IntentType(Enum):
+    COMMAND = "command"     # Do something
+    QUERY = "query"         # Ask something
+    CHAT = "chat"           # Discuss something
+    UNKNOWN = "unknown"
+
+@dataclass
+class Signal:
+    name: str
+    type: str # linguistic, structural, contextual, temporal
+    value: float
+    baseWeight: float
+
+@dataclass
+class NeuralState:
+    user_id: str
+    project_id: str
+    weights: Dict[str, float] = field(default_factory=dict)
+    threshold: float = DEFAULT_THRESHOLD
+    alpha: float = 1.0
+    beta: float = 1.0
+    activation_mode: ActivationMode = ActivationMode.STANDARD
+
+@dataclass
+class ProcessingContext:
+    chat_type: str = "direct"
+    is_author_maintainer: bool = False
+    thread_depth: int = 0
+    message_timestamp: float = 0.0
+
+@dataclass
+class ProcessResult:
+    confidence: float
+    should_propose: bool
+    rationale: str
+    signals: List[Dict[str, Any]]
+    detected_relations: List[Dict[str, str]] = field(default_factory=list)
+    activation_used: str = "standard"
+    intent_type: IntentType = IntentType.UNKNOWN # New Field
+
+# =============================================================================
+# UTILS
+# =============================================================================
+
+def sigmoid(x: float, threshold: float, steepness: float = 10.0) -> float:
+    return 1 / (1 + math.exp(-steepness * (x - threshold)))
+
+def softplus(x: float) -> float:
+    if x < 0: x = x * 0.1
+    return math.log(1 + math.exp(x)) / 3.0
+
+# =============================================================================
+# SENSORS
+# =============================================================================
+
+class LinguisticSensor:
+    def extract(self, content: str) -> List[Signal]:
+        signals = []
+        for p in DECISION_PATTERNS:
+            if re.search(p["pattern"], content, re.IGNORECASE):
+                signals.append(Signal(
+                    name=p["name"],
+                    type="linguistic",
+                    value=1.0,
+                    baseWeight=p["baseWeight"]
+                ))
+        return signals
+
+class StructuralSensor:
+    def extract(self, ctx: ProcessingContext) -> List[Signal]:
+        signals = []
+        depth_value = min(ctx.thread_depth * 0.03, 0.15)
+        if depth_value > 0:
+            signals.append(Signal(
+                name="thread_depth",
+                type="structural",
+                value=depth_value,
+                baseWeight=1.0
+            ))
+
+        if ctx.is_author_maintainer:
+            signals.append(Signal(
+                name="maintainer_author",
+                type="structural",
+                value=0.2,
+                baseWeight=1.0
+            ))
+        return signals
+
+# =============================================================================
+# CORE ENGINE
+# =============================================================================
+
+class SynapticProcessor:
+    def aggregate(self, signals: List[Signal], weights: Dict[str, float]) -> float:
+        total = 0.0
+        for signal in signals:
+            w = weights.get(signal.name, signal.baseWeight)
+            total += signal.value * w
+        return total
+
+    def activate_variable(self, aggregated: float, threshold: float, mode: ActivationMode) -> float:
+        if mode == ActivationMode.STRICT:
+            strict_threshold = max(threshold, 0.85)
+            return sigmoid(aggregated, strict_threshold, steepness=20.0)
+        elif mode == ActivationMode.EXPLORATORY:
+            val = softplus(aggregated)
+            return min(val, 1.0)
+        else:
+            return sigmoid(aggregated, threshold, steepness=10.0)
+
+class NeuralHub:
+    def __init__(self):
+        self.linguistic = LinguisticSensor()
+        self.structural = StructuralSensor()
+        self.processor = SynapticProcessor()
+
+    def classify_intent(self, content: str, signals: List[Signal]) -> IntentType:
+        """
+        Classifies intent based on signals and keywords.
+        """
+        content_lower = content.lower()
+
+        # 1. Command Check (High weight action verbs)
+        has_command = any(s.baseWeight > 1.5 for s in signals)
+        if has_command:
+            return IntentType.COMMAND
+
+        # 2. Query Check (Questions)
+        if "?" in content or any(w in content_lower for w in ["what", "how", "why", "when", "who"]):
+            return IntentType.QUERY
+
+        # 3. Chat Check (Default fallback if signals exist but aren't commands)
+        if signals or len(content.split()) > 1:
+            return IntentType.CHAT
+
+        return IntentType.UNKNOWN
+
+    def process(self, content: str, ctx: ProcessingContext, state: NeuralState, memory_system: Any = None) -> ProcessResult:
+        signals = self.linguistic.extract(content)
+        signals.extend(self.structural.extract(ctx))
+
+        intent_type = self.classify_intent(content, signals)
+
+        if not signals and state.activation_mode != ActivationMode.EXPLORATORY:
+             # Even if no signals, if it's a Query, we should process it as CHAT/QUERY
+             if intent_type == IntentType.QUERY:
+                 pass # Allow queries to pass even without "decision" signals
+             else:
+                 return ProcessResult(0.0, False, "No decision signals detected", [], [], state.activation_mode.name, intent_type)
+
+        if state.activation_mode == ActivationMode.STRICT:
+            signals = [s for s in signals if s.baseWeight >= 1.5]
+            if not signals:
+                return ProcessResult(0.0, False, "[STRICT] Signals too weak.", [], [], state.activation_mode.name, intent_type)
+
+        aggregated = self.processor.aggregate(signals, state.weights)
+
+        if state.activation_mode == ActivationMode.EXPLORATORY and aggregated < 0:
+             positives = sum(1 for s in signals if s.baseWeight > 0)
+             if positives > 0:
+                 aggregated = 0.5
+
+        confidence = self.processor.activate_variable(aggregated, state.threshold, state.activation_mode)
+
+        cutoff = 0.5
+        if state.activation_mode == ActivationMode.EXPLORATORY: cutoff = 0.20
+
+        should_propose = confidence >= cutoff
+
+        # Query/Chat intent forces proposal (Decision: "Reply")
+        if intent_type in [IntentType.QUERY, IntentType.CHAT]:
+            should_propose = True
+            confidence = max(confidence, 0.6) # Boost confidence for chat
+
+        # --------------------------------------------------------------------------------
+        # CONTEMPLATION LOOP (Real Logic)
+        # --------------------------------------------------------------------------------
+        relations = []
+        if should_propose and memory_system:
+             confidence, new_relations = self.contemplate_deep(confidence, content, memory_system)
+             relations.extend(new_relations)
+
+             if confidence < cutoff:
+                  should_propose = False
+
+        # Fallback Relation Detection
+        content_lower = content.lower()
+        if should_propose and not relations:
+            if "because" in content_lower or "depends on" in content_lower:
+                relations.append({"type": "depends_on", "target": "unknown"})
+            elif "instead" in content_lower or "switch" in content_lower:
+                relations.append({"type": "contradicts", "target": "previous_goal"})
+
+        rationale = f"[{state.activation_mode.name}] Confidence: {confidence:.2f}. Intent: {intent_type.name}."
+        if should_propose:
+            rationale += " Signals suggest a decision."
+        else:
+            rationale += " Insufficient signal strength."
+            if relations and relations[0]["type"] == "contradicts":
+                rationale += " (Contradiction detected)."
+
+        return ProcessResult(
+            confidence=confidence,
+            should_propose=should_propose,
+            rationale=rationale,
+            signals=[{"name": s.name, "val": s.value} for s in signals],
+            detected_relations=relations,
+            activation_used=state.activation_mode.name,
+            intent_type=intent_type
+        )
+
+    def contemplate_deep(self, current_confidence: float, content: str, memory_system: Any) -> tuple[float, List[Dict]]:
+        """
+        Real Reasoning: Entity Extraction + Graph Traversal.
+        """
+        relations = []
+
+        # 1. Simple Entity Extraction (Regex)
+        entities = []
+        if "Crypto" in content: entities.append("Crypto")
+        if "Mars" in content: entities.append("Mars")
+        if "Project Alpha" in content: entities.append("Project Alpha")
+
+        # 2. Logic: Contradiction Check
+        content_lower = content.lower()
+        is_destructive = "delete" in content_lower or "stop" in content_lower
+
+        if is_destructive:
+            for entity in entities:
+                # Query Real Graph
+                if hasattr(memory_system, "graph") and memory_system.graph.has_node(entity):
+                    in_edges = memory_system.graph.in_edges(entity, data=True)
+                    for src, tgt, data in in_edges:
+                        if data["type"].value == "depends_on":
+                            relations.append({
+                                "type": "contradicts",
+                                "target": src,
+                                "reason": f"{src} depends on {entity}"
+                            })
+                            current_confidence *= 0.4
+
+        return current_confidence, relations
+
+# Singleton
+neural_hub = NeuralHub()

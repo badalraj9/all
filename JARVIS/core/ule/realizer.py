@@ -1,81 +1,71 @@
-import random
 from typing import Dict, List, Any
-from JARVIS.core.ule.types import ULEOutput, MoveType, Interpretation
+import random
+from JARVIS.intelligence.llm_engine.core import llm_engine
 
-class TemplateSelector:
-    """Selects the best template based on Move Type."""
+class ULERealizer:
+    """
+    Universal Language Engine (ULE) - Hybrid Realizer.
+    Switches between Deterministic Templates (Fast/Safe) and LLM (Fluid/Cognitive).
+    """
 
     def __init__(self):
-        # In a real system, these would load from MemoryThread
         self.templates = {
-            MoveType.CLARIFY: [
-                "Sir, I'm detecting some ambiguity regarding '{entity}'. Did you mean {options}?",
-                "I need a bit more precision. Are we referring to {options}?",
-                "Could you clarify '{entity}'? My protocols suggest {options} as possibilities."
+            "thesis_abstract": [
+                "ABSTRACT: {title}\n\nThis study investigates {topic} as implemented in {target}. Our analysis identified {count} core components focused on {focus}. Literature review confirms the viability of {key_finding}.",
             ],
-            MoveType.PROPOSE: [
-                "Affirmative. Initiating protocol: {goal}.",
-                "Understood. I will begin {goal} immediately.",
-                "Processing request. Starting execution for {goal}."
-            ],
-            MoveType.REFUSE: [
-                "I cannot do that, Sir. {rationale}",
-                "Safety protocols prevent that action. {rationale}",
-                "That request is outside my safety parameters. {rationale}"
+            "status_report": [
+                "STATUS: {status}. Active Project: {project}. Current Focus: {focus}.",
             ]
         }
+        llm_engine.load_model()
 
-    def select(self, move: MoveType) -> str:
-        options = self.templates.get(move, ["Processing..."])
-        return random.choice(options)
-
-class SlotFiller:
-    """Fills the template slots with data."""
-
-    def fill(self, template: str, data: Dict[str, Any]) -> str:
-        try:
-            return template.format(**data)
-        except KeyError:
-            return template # Fallback if data missing
-
-class Realizer:
-    """The Voice Box of JARVIS."""
-
-    def __init__(self):
-        self.selector = TemplateSelector()
-        self.filler = SlotFiller()
-
-    def realize(self, output: ULEOutput) -> str:
-        # 1. Select Template
-        template = self.selector.select(output.move)
-
-        # 2. Prepare Data
+    def generate_report(self, context_nodes: List[Dict], intent: str = "General Report", intent_type: str = "QUERY", use_llm: bool = True) -> str:
+        """
+        Intelligent Aggregation of Memory Nodes into a Report context.
+        """
+        # 1. Extract Signals
         data = {
-            "rationale": output.rationale
+            "title": "Automated Analysis",
+            "topic": "Unknown Topic",
+            "target": "Unknown Target",
+            "count": 0,
+            "focus": "General Logic",
+            "key_finding": "Standard Patterns",
+            "paper": "Unknown Paper"
         }
 
-        if output.selected_interpretation:
-            data["goal"] = output.selected_interpretation.description
-            data["intent"] = output.selected_interpretation.intent
+        # Flatten context for LLM
+        flat_context = {}
+        for i, node in enumerate(context_nodes):
+            payload = node.get("payload", {})
+            flat_context[f"Item_{i}"] = str(payload)
 
-        if output.move == MoveType.CLARIFY:
-            # Parse the response content from Control Plane which has the raw options
-            # "Did you mean 'EDITH' or 'Sandbox'?" -> extract options if needed
-            # For V1, we just use the pre-formatted content from Control if it's better
-            # But here we show the Realizer doing the work:
-            data["entity"] = "it" # Simplified
-            data["options"] = output.response_content # Control passed formatted options
+            # Heuristics for Template
+            if "files" in payload:
+                data["count"] = len(payload["files"])
+            if "topic" in payload:
+                data["topic"] = payload["topic"]
+                data["title"] = f"Analysis of {payload['topic']}"
+            if "MAREY" in str(node):
+                data["target"] = "MAREY Repository"
+            if "Adaptive" in str(node):
+                data["focus"] = "Adaptive Processing"
+            if "title" in payload:
+                data["paper"] = payload["title"]
+                data["key_finding"] = payload.get("summary", "published research")
 
-            # Refine options display
-            if "Did you mean" in output.response_content:
-                # Extract specific entities from the raw string for cleaner formatting
-                # (Skipping regex for brevity, trusting Control output for V1)
-                pass
+        # 2. Decide: Template or LLM?
+        if use_llm:
+            return llm_engine.generate_response(flat_context, intent=intent, intent_type=intent_type)
+        else:
+            return self._apply_template("thesis_abstract", data)
 
-        # 3. Fill Slots
+    def _apply_template(self, intent, context):
+        if intent not in self.templates: return "Unknown Intent"
+        template = random.choice(self.templates[intent])
         try:
-            return self.filler.fill(template, data)
-        except Exception:
-            return output.response_content # Fallback to raw output
+            return template.format(**context)
+        except:
+            return "Template Error"
 
-realizer = Realizer()
+ule_realizer = ULERealizer()
