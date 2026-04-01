@@ -1,51 +1,26 @@
-# JARVIS (Project WARHORSE)
+# JARVIS: Autonomous Research & Execution System
 
 > "Sir, I have initialized the system."
 
-JARVIS is an **Autonomous Research & Execution System** that combines:
-1.  **SENTRY Neural Hub**: A deterministic "Brain" for decision making.
-2.  **MemoryThread**: A "Truth-Aware" memory engine with Cognitive Galaxy Schema.
-3.  **ORE**: An LLM-free research engine.
-4.  **MAREY**: An adaptive vision system.
-5.  **CAPSULE**: A robust plugin architecture.
+JARVIS is a **Universal Language Engine (ULE)** implementation designed to solve the "Stochastic Parrot" problem of modern LLMs. It separates **Cognition** (Thinking) from **Control** (Doing), ensuring safe, verifiable, and deterministic execution of complex tasks.
 
-## 🚀 Getting Started
+## 📚 Documentation
+Detailed architectural documentation for thesis and development:
 
-### Prerequisites
-- Python 3.10+
-- Docker & Docker Compose
+-   [**01 System Architecture**](docs/01_SYSTEM_ARCHITECTURE.md): The Neural Hub, ULE, and Control Planes.
+-   [**02 Memory Galaxy**](docs/02_MEMORY_GALAXY.md): Truth Vectors, Context Web, and Hebbian Learning.
+-   [**03 Cognitive Plugins**](docs/03_COGNITIVE_PLUGINS.md): ORE (Research) and MAREY (Saccadic Vision).
+-   [**04 Installation & Usage**](docs/04_INSTALLATION_AND_USAGE.md): Setup guide.
+-   [**05 Models & Config**](docs/05_MODELS_AND_CONFIGURATION.md): Voice/Text routing and LLM setup.
 
-### Installation
+## 🚀 Quick Start
 
-1.  **Clone & Setup**:
-    ```bash
-    cd JARVIS
-    pip install -r requirements.txt
-    ```
+1.  **Install**: `pip install -r requirements.txt`
+2.  **Infrastructure**: `docker-compose up -d`
+3.  **Run**: `python -m JARVIS.interfaces.tui.app`
 
-2.  **Start Infrastructure** (Database & Vector Store):
-    ```bash
-    docker-compose up -d
-    ```
-
-3.  **Run the Console**:
-    ```bash
-    python -m JARVIS.interfaces.tui.app
-    ```
-
-## 🧠 Architecture
-
--   **`core/`**: The spinal cord (Event Bus, Plugin Loader, Mission Control).
--   **`intelligence/`**: The Brain (Neural Hub, Signals).
--   **`memory/`**: The Memory (PostgreSQL + Truth Maintenance).
--   **`plugins/`**: The Skills (Research, Vision, etc.).
-
-## 🕹️ Usage
-
-In the TUI Command Bar:
--   `Build <Project Name>`: Starts a research & design mission.
-    -   *Example:* `Build EDITH`
-
-## 🛠️ Configuration
-
-Edit `.env` or `core/config.py` to change database settings.
+## 🧠 Key Features
+-   **Neural Hub**: A deterministic "Brain" that validates decisions against memory before execution.
+-   **Context Web**: A graph-based memory system that learns relationships over time.
+-   **Adaptive Vision**: Hardware-aware image processing that mimics human eye movement.
+-   **Hybrid Realizer**: Intelligently switches between LLM generation and safe Templates.

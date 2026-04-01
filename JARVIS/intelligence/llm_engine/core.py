@@ -21,6 +21,20 @@ class LLMEngine:
         self.tokenizer = None
         self.mock_mode = True
 
+    async def initialize(self):
+        # Async wrapper for loading
+        self.load_model()
+        return True
+
+    async def generate(self, prompt: str, max_tokens: int = 128) -> str:
+        # Generic generate method for ULE compatibility
+        if self.mock_mode:
+            return self._mock_generation(prompt)
+
+        # Real generation logic would go here, similar to generate_response
+        # For now, reuse _mock_generation if model not loaded
+        return self._mock_generation(prompt)
+
     def load_model(self):
         if torch is None:
             print("[LLM] PyTorch not found. Running in MOCK MODE.")

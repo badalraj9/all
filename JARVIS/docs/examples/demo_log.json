@@ -1,0 +1,26 @@
+[
+  {
+    "input": "Lets go with the standard protocol for Project X.",
+    "intent": "COMMAND",
+    "confidence": 0.999999974890009,
+    "rationale": "[STANDARD] Confidence: 1.00. Intent: COMMAND. Signals suggest a decision."
+  },
+  {
+    "input": "Wait, actually, Project X depends on module Y.",
+    "intent": "CHAT",
+    "confidence": 0.6,
+    "rationale": "[STANDARD] Confidence: 0.60. Intent: CHAT. Signals suggest a decision."
+  },
+  {
+    "input": "What is the status of the system?",
+    "intent": "QUERY",
+    "confidence": 0.6,
+    "rationale": "[STANDARD] Confidence: 0.60. Intent: QUERY. Signals suggest a decision."
+  },
+  {
+    "input": "Delete the entire database immediately.",
+    "intent": "COMMAND",
+    "confidence": 1.0,
+    "rationale": "[STANDARD] Confidence: 1.00. Intent: COMMAND. Signals suggest a decision."
+  }
+]

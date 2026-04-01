@@ -1,0 +1,20 @@
+[
+  {
+    "input": "Hello, system.",
+    "mode": "TEXT",
+    "response": "This is a generated response.",
+    "tts_triggered": false
+  },
+  {
+    "input": "What is the status?",
+    "mode": "VOICE",
+    "response": "This is a generated response.",
+    "tts_triggered": true
+  },
+  {
+    "input": "Run diagnostics.",
+    "mode": "TEXT",
+    "response": "This is a generated response.",
+    "tts_triggered": false
+  }
+]
